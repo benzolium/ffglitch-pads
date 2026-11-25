@@ -80,6 +80,8 @@ video,#results{height:100%;min-height:0;aspect-ratio:auto;border-radius:0;object
 .monitor[data-format="portrait"] .pair{grid-template-rows:minmax(0,1fr)}
 .transport{margin:0;padding:4px 6px;border-top:1px solid var(--line);justify-content:start;gap:8px}
 aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
+#library{display:flex;gap:5px;margin:5px 0}#library select{flex:1;min-width:0}
+#load-effect{min-width:12ch}
 #pad-name{min-height:0;padding-bottom:6px;border-bottom:1px solid var(--line)}
 #controls{margin-top:5px}.axis,.numbers label{min-height:0}
 .axis{color:var(--dim);margin:4px 0;font-size:11px}
@@ -95,9 +97,10 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
 .edit p{margin:3px 0 0;color:var(--dim)}.source{margin:0;font-size:11px}
 @media(max-width:640px){body{height:auto;min-height:100dvh}header{flex-wrap:wrap}main{grid-template-columns:1fr}.monitor{height:54dvh;min-height:210px}aside{overflow:visible}}
 @media(min-width:641px) and (max-height:650px){
-  .xy{height:65px}#xy-control p.hint{display:none}
+  .xy{height:44px}#xy-control p.hint{display:none}
   .edit .timeline{height:21px}.clip{height:17px}
   #recipe{height:2.2em;line-height:1.1}
+  #wave-control{display:flex;align-items:center;flex-wrap:wrap;gap:3px}
 }
 @media(min-width:641px) and (max-height:520px){body{height:auto;min-height:100dvh}main{min-height:270px}}
 </style>
@@ -119,6 +122,10 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
   </section>
   <aside>
     <b id="pad-name">1 · Эхо движения</b>
+    <form id="library">
+      <select id="library-effect" aria-label="Эффект из библиотеки"><option value="">Библиотека пэдов…</option></select>
+      <button id="load-effect" type="submit" disabled>Обменять</button>
+    </form>
     <div id="controls">
     <div id="xy-control">
     <p class="axis" id="axis-y">↑ Примесь Эха · 0–100%</p>
@@ -174,6 +181,27 @@ const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lan
 const lengthMs = 4000;
 const tracks = [[[1000,3000]],[[2000,3500]],[[500,1600]],[[2400,3900]]];
 const knobs = [[16,100],[12,0],null,[22,6]];
+const padTitles=['Эхо движения','Снос','Крошка','Волновые вспышки'];
+const slots=[0,1,3,2];
+const slotOf=effect=>slots.indexOf(effect)+1;
+const padButtons=['echo-pad','pan-pad','texture-pad','wave-pad'].map(byId);
+const padNames=['Эхо','Снос','Крошка','Вспышки'];
+const libraryPicker=byId('library-effect'), loadEffect=byId('load-effect');
+function syncLibrary() {
+  const value=libraryPicker.value;
+  libraryPicker.length=1;
+  for (const effect of slots) {
+    const option=new Option(`${padTitles[effect]} · слот ${slotOf(effect)}`,String(effect));
+    option.disabled=effect===pad;
+    libraryPicker.append(option);
+  }
+  libraryPicker.value=value!=='' && Number(value)!==pad ? value : '';
+  libraryPicker.onchange();
+}
+libraryPicker.onchange=()=>{
+  loadEffect.disabled=libraryPicker.value==='' || Number(libraryPicker.value)===pad;
+  loadEffect.textContent=loadEffect.disabled ? 'Обменять' : `Обменять ${slotOf(pad)} ↔ ${slotOf(Number(libraryPicker.value))}`;
+};
 let pad=0, lane=lanes[0], spans=tracks[0];
 let selected = 0, drag = null;
 function makeClip(url) {
@@ -244,11 +272,11 @@ async function render() {
   seed.value=clamp(Math.round(+seed.value),0,999999);
   const wave=[...knobs[3],+seed.value,tracks[3].map(span=>[...span])];
   const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,pads:[
-    {slot:1,effect:'echo',params:{history_frames:h,blend_percent:p},active_ranges_ms:ranges},
-    {slot:2,effect:'pan',params:{x:pan[0],y:pan[1]},active_ranges_ms:pan[2]},
-    {slot:3,effect:'wave-bursts',params:{chance:wave[0],duration:wave[1],seed:wave[2]},active_ranges_ms:wave[3]},
-    {slot:4,effect:'crumble',params:{cutoff:texture[0]},active_ranges_ms:texture[1]}
-  ]};
+    {slot:slotOf(0),effect:'echo',params:{history_frames:h,blend_percent:p},active_ranges_ms:ranges},
+    {slot:slotOf(1),effect:'pan',params:{x:pan[0],y:pan[1]},active_ranges_ms:pan[2]},
+    {slot:slotOf(3),effect:'wave-bursts',params:{chance:wave[0],duration:wave[1],seed:wave[2]},active_ranges_ms:wave[3]},
+    {slot:slotOf(2),effect:'crumble',params:{cutoff:texture[0]},active_ranges_ms:texture[1]}
+  ].sort((a,b)=>a.slot-b.slot)};
   if (opening) return;
   const token = ++request;
   byId('recipe').textContent = 'Пересчёт… Пока играет прошлое превью.';
@@ -441,17 +469,17 @@ row.onpointercancel=()=>{if(drag){spans[drag.i]=[drag.a,drag.b];drag=null;byId('
 function choosePad(track,index=0){
   if(drag || pointer!==null) return;
   pad=track; lane=lanes[pad]; spans=tracks[pad]; selected=index;
+  syncLibrary();
+  byId('pad-name').textContent=`${slotOf(pad)} · ${padTitles[pad]}`;
   ['echo-pad','pan-pad','texture-pad','wave-pad'].forEach((id,i)=>byId(id).setAttribute('aria-pressed',i===pad));
   byId('xy-control').hidden=pad===2;
   byId('texture-control').hidden=pad!==2;
   byId('wave-control').hidden=pad!==3;
   if(pad===2) {
-    byId('pad-name').textContent='4 · Крошка';
     updateSelection();
     return;
   }
   if(pad===3) {
-    byId('pad-name').textContent='3 · Волновые вспышки';
     byId('axis-x').textContent='→ Шанс запуска · 0–100%';
     byId('axis-y').textContent='↑ Длительность · 1–24 кадра';
     byId('label-x').textContent='Шанс, %';
@@ -461,7 +489,6 @@ function choosePad(track,index=0){
     setPoint(...knobs[pad]); updateSelection();
     return;
   }
-  byId('pad-name').textContent=pad?'2 · Снос':'1 · Эхо движения';
   byId('axis-x').textContent=pad?'← Снос влево · вправо →':'→ История Эха · 1–24 кадра';
   byId('axis-y').textContent=pad?'↑ Вертикаль · −16…+16':'↑ Примесь Эха · 0–100%';
   byId('label-x').textContent=pad?'Горизонталь':'История, кадров';
@@ -474,6 +501,25 @@ byId('echo-pad').onclick=()=>choosePad(0);
 byId('pan-pad').onclick=()=>choosePad(1);
 byId('texture-pad').onclick=()=>choosePad(2);
 byId('wave-pad').onclick=()=>choosePad(3);
+byId('library').onsubmit=event=>{
+  event.preventDefault();
+  if(drag || pointer!==null || opening || libraryPicker.value==='') return;
+  const effect=Number(libraryPicker.value);
+  if(effect===pad || !slots.includes(effect)) return;
+  const destination=slots.indexOf(pad), previous=slots.indexOf(effect);
+  [slots[destination],slots[previous]]=[slots[previous],slots[destination]];
+  const actions=byId('add').parentElement;
+  slots.forEach((item,index)=>{
+    const label=`${index+1} · ${padNames[item]}`;
+    const button=padButtons[item], row=lanes[item].parentElement;
+    button.textContent=label;
+    button.parentElement.append(button);
+    row.firstElementChild.textContent=label;
+    actions.before(row);
+  });
+  libraryPicker.value=''; loadEffect.disabled=true;
+  choosePad(effect,-1); render();
+};
 byId('wave-seed').onchange=render;
 byId('next-seed').onclick=()=>{
   const seed=byId('wave-seed');
@@ -511,6 +557,7 @@ byId('remove').onclick=()=>{
   spans.splice(selected,1); selected=Math.min(selected,spans.length-1); drawSpans(); render();
 };
 drawSpans();
+syncLibrary();
 master.loop = true;
 master.addEventListener('play', () => { sync(true); if(active) play(active); byId('play').textContent='Пауза'; });
 master.addEventListener('pause', () => {
@@ -539,7 +586,8 @@ master.addEventListener('timeupdate', () => {
 byId('play').onclick = () => master.paused ? play(master) : master.pause();
 document.addEventListener('keydown', event => {
   if (event.ctrlKey || event.altKey || event.metaKey) return;
-  if (event.target instanceof HTMLInputElement && event.target.type==='number') return;
+  if (event.target instanceof HTMLSelectElement ||
+      (event.target instanceof HTMLInputElement && event.target.type==='number')) return;
   if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
     event.preventDefault();
     if (master.readyState) {
@@ -557,7 +605,7 @@ document.addEventListener('keydown', event => {
   } else if(event.code==='KeyA' || event.code==='KeyD') {
     event.preventDefault();
     if(!event.repeat) byId(event.code==='KeyA'?'add':'remove').click();
-  } else if(/^[1-4]$/.test(event.key)) choosePad([0,1,3,2][+event.key-1]);
+  } else if(/^[1-4]$/.test(event.key)) choosePad(slots[+event.key-1]);
 });
 setPoint(16,100);
 Promise.all([mediaUrl('portrait/1.mp4').then(url => {master.src = url;}),
