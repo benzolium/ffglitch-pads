@@ -93,6 +93,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
 #dot{background:var(--accent);border-color:#161711}.numbers{margin:5px 0;gap:3px}.numbers input{padding:2px 4px}
 #xy-control p:last-of-type,#texture-control p{margin:5px 0}
 #wave-control input{width:5em}#recipe{height:2.6em;margin:4px 0;color:var(--dim)}
+.exports{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
 .pads{margin:0;gap:4px}.pads button{padding:5px 8px;background:var(--sunk);border:1px solid var(--line);border-radius:2px;text-align:left}.pads button[aria-pressed=true]{background:var(--accent);color:#151614;border-color:var(--accent);font-weight:700}
 .edit .lane{margin:2px 0;grid-template-columns:6rem minmax(0,1fr)}
 .edit .timeline{height:24px;border-radius:2px;background:#30342d}.clip{top:2px;height:20px;border-radius:2px}
@@ -159,7 +160,11 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
     </div>
     </div>
     <p id="recipe" role="status"></p>
-    <a id="save" download="glitch-recipe.json">Сохранить рецепт</a>
+    <div class="exports">
+      <button id="export-video" type="button" disabled>Скачать MP4</button>
+      <button id="export-js" type="button" disabled>Скачать JS</button>
+      <button id="export-input" type="button" disabled title="Рабочий MPEG-2/AVI для запуска скрипта">Входной AVI</button>
+    </div>
   </aside>
 </main>
 <div class="pads" aria-label="Пэды">
@@ -185,6 +190,8 @@ const master = byId('original');
 const grid = byId('grid');
 const historyInput = byId('history'), percentInput = byId('percent');
 let active, request = 0, lastTime = 0, pointer = null, saved = null;
+let exportName = '';
+let exportInput = '';
 let pausedTime = 0;
 const currentTime = () => master.paused ? pausedTime : master.currentTime;
 const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
@@ -245,14 +252,24 @@ function sync(force=false) {
   if (force || (!active.seeking && drift > .085)) active.currentTime = now;
 }
 const play = video => video.play().catch(() => {});
-async function show(url, token) {
+async function readyClip(url, token) {
   const next = makeClip(url);
-  if (!next.readyState && !next.error) await new Promise(resolve => {
-    next.addEventListener('loadedmetadata', resolve, {once:true});
-    next.addEventListener('error', resolve, {once:true});
+  if (next.readyState < 2 && !next.error) await new Promise(resolve => {
+    const finish=()=>{
+      clearTimeout(timer);
+      next.removeEventListener('loadeddata',finish);
+      next.removeEventListener('error',finish);
+      resolve();
+    };
+    const timer=setTimeout(finish,10000);
+    next.addEventListener('loadeddata',finish);
+    next.addEventListener('error',finish);
   });
-  if (token !== request) { next.remove(); return false; }
-  if (next.error) { next.remove(); throw Error('Видео не загрузилось'); }
+  if (token !== request) { next.remove(); return null; }
+  if (next.error || next.readyState < 2) { next.remove(); throw Error('Видео не загрузилось'); }
+  return next;
+}
+function activatePreview(next) {
   if (active) {
     active?.pause();
     if (active.src.startsWith('blob:') && active.src!==master.src) URL.revokeObjectURL(active.src);
@@ -262,6 +279,25 @@ async function show(url, token) {
   sync(true);
   active.classList.add('active');
   if (!master.paused) play(active);
+}
+async function show(url, token) {
+  const next=await readyClip(url,token);
+  if (!next) return false;
+  activatePreview(next);
+  return true;
+}
+async function showSource(url, token) {
+  // The same decoded file is used on both sides before the first render.
+  const next=await readyClip(url,token);
+  if (!next) return false;
+  const oldUrl=master.src, wasPlaying=!master.paused;
+  master.pause();
+  pausedTime=lastTime=0;
+  master.src=url;
+  activatePreview(next);
+  if(oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+  paintTime(0);
+  if(wasPlaying) play(master);
   return true;
 }
 const clamp = (v, low, high) => Math.max(low, Math.min(high,v));
@@ -271,19 +307,40 @@ function setPoint(h, p) {
   byId('dot').style.left = `${pad===3 ? h : pad===1 ? (16-h)/32*100 : (h-1)/23*100}%`;
   byId('dot').style.top = `${pad===3 ? (24-p)/23*100 : pad===1 ? (16-p)/32*100 : 100-p}%`;
 }
-function saveRecipe(recipe) {
+function saveExports(recipe, script, input) {
   if (saved) URL.revokeObjectURL(saved);
-  saved = URL.createObjectURL(new Blob([JSON.stringify(recipe, null, 2)], {type:'application/json'}));
-  byId('save').href = saved;
+  saved = URL.createObjectURL(new Blob([script], {type:'text/javascript'}));
   byId('recipe').textContent = 'Превью обновлено.';
+  const stem = recipe.source.name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_ -]/gu,'-').slice(0,80).trim();
+  exportName = `${stem || 'video'}-glitch-${recipe.source.start_ms}ms.mp4`;
+  exportInput = input;
+  setExportsDisabled(false);
 }
+function setExportsDisabled(disabled) {
+  byId('export-video').disabled=byId('export-js').disabled=byId('export-input').disabled=disabled;
+}
+function download(url, name) {
+  const link=document.createElement('a');
+  link.href=url; link.download=name; link.click();
+}
+byId('export-video').onclick=()=>{
+  if (!active || byId('export-video').disabled || !exportName) return;
+  download(active.src,exportName);
+};
+byId('export-js').onclick=()=>{
+  if (saved && !byId('export-js').disabled) download(saved,exportName.replace(/\.mp4$/,'.js'));
+};
+byId('export-input').onclick=()=>{
+  if (exportInput && !byId('export-input').disabled) download(exportInput,'work.avi');
+};
 async function mediaUrl(path) {
   if (location.protocol === 'file:') return path;
   const media = await fetch(path);
   if (!media.ok) throw Error();
   return URL.createObjectURL(await media.blob());
 }
-async function render() {
+let pendingRender=null, rendering=false;
+function render() {
   if(pad===0 || pad===1 || pad===3) {
     knobs[pad] = [historyInput,percentInput].map(input=>clamp(Math.round(+input.value),+input.min,+input.max));
     setPoint(...knobs[pad]);
@@ -300,24 +357,42 @@ async function render() {
   const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,
     pads:slots.map((effect,index)=>({slot:index+1,effect:effectIds[effect],
       params:parameters[effect],active_ranges_ms:tracks[effect].map(span=>[...span])}))};
-  if (opening) return;
+  if (opening || !master.getAttribute('src')) return;
   const token = ++request;
+  setExportsDisabled(true);
   byId('recipe').textContent = 'Пересчёт… Пока играет прошлое превью.';
   if (location.protocol === 'file:') {
     byId('recipe').textContent = 'Для пересчёта открой локальный сервер, не файл.';
     return;
   }
+  pendingRender={clip:clipId,recipe,token};
+  void drainRenders();
+}
+async function drainRenders() {
+  if(rendering) return;
+  rendering=true;
+  try {
+    while(pendingRender) {
+      const job=pendingRender;
+      pendingRender=null;
+      if(job.token===request) await runRender(job);
+    }
+  } finally {
+    rendering=false;
+  }
+}
+async function runRender({clip,recipe,token}) {
   let url;
   try {
     const response = await fetch('/render', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({clip:clipId,recipe})
+      body:JSON.stringify({clip,recipe})
     });
     if (!response.ok) throw Error();
-    const {path} = await response.json();
+    const {path,script,input} = await response.json();
     if (token !== request) return;
     url = await mediaUrl(path);
-    if (await show(url, token)) {url = null; saveRecipe(recipe);}
+    if (await show(url, token)) {url = null; saveExports(recipe,script,input);}
   } catch {
     if (token === request) byId('recipe').textContent = 'Не удалось обновить превью. Играет прошлый результат.';
   } finally {
@@ -335,32 +410,31 @@ byId('video-file').onchange=async event=>{
   }
   opening=true;
   const token=++request;
+  pendingRender=null;
+  const exportWasDisabled=byId('export-video').disabled;
+  setExportsDisabled(true);
   byId('open-video').disabled=true;
   byId('recipe').textContent='Готовлю локальный луп…';
-  const wasPlaying=!master.paused;
+  let originalUrl;
   try {
     const response=await fetch('/open-video',{method:'POST',headers:{
       'Content-Type':'application/octet-stream','X-Start-Ms':String(start)
     },body:file});
     if(!response.ok) throw Error();
     const {clip,path,orientation}=await response.json();
-    const originalUrl=await mediaUrl(path);
-    const oldUrl=master.src;
-    master.pause();
-    pausedTime=lastTime=0;
-    master.src=originalUrl;
-    if(oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
-    paintTime(0);
-    await show(originalUrl,token);
+    originalUrl=await mediaUrl(path);
+    if(!await showSource(originalUrl,token)) return;
+    originalUrl=null;
     // Both players share this URL until the first processed preview replaces the result.
     clipId=clip; sourceName=file.name; sourceStart=start;
     document.querySelector('.monitor').dataset.format=orientation;
     byId('clip-label').textContent=`${orientation==='portrait'?'Вертикальное':'Горизонтальное'} видео · Луп 4 с`;
-    if(wasPlaying) play(master);
   } catch {
+    setExportsDisabled(exportWasDisabled || active?.src===master.src);
     byId('recipe').textContent='Не удалось открыть видео. Проверь формат и начало лупа.';
     return;
   } finally {
+    if(originalUrl?.startsWith('blob:')) URL.revokeObjectURL(originalUrl);
     opening=false;
     byId('open-video').disabled=false;
   }
@@ -646,11 +720,20 @@ document.addEventListener('keydown', event => {
   } else if(/^[1-4]$/.test(event.key)) choosePad(slots[+event.key-1]);
 });
 setPoint(16,100);
-Promise.all([mediaUrl('portrait/1.mp4').then(url => {master.src = url;}),
-  mediaUrl('portrait/9.mp4').then(async url => {
-    if(await show(url, 0)) render();
-    else if(url.startsWith('blob:')) URL.revokeObjectURL(url);
-  })])
-  .catch(() => {byId('recipe').textContent = 'Не удалось загрузить стартовое превью';});
+async function loadDemo() {
+  let url;
+  try {
+    url=await mediaUrl('portrait/1.mp4');
+    if(await showSource(url,0)) {url=null;render();}
+  } catch {
+    if(request===0) {
+      byId('clip-label').textContent = 'Луп 4 с';
+      byId('recipe').textContent = 'Открой видео, чтобы начать.';
+    }
+  } finally {
+    if(url?.startsWith('blob:')) URL.revokeObjectURL(url);
+  }
+}
+void loadDemo();
 </script>
 </html>

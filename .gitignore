@@ -4,3 +4,4 @@
 /portrait/
 __pycache__/
 *.log
+/target/

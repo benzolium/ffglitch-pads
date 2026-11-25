@@ -15,6 +15,7 @@ from render_grid import crumble, run
 ROOT = Path(__file__).resolve().parent
 MEDIA = ROOT / "portrait"
 ENGINE = ROOT / "ffglitch-0.10.2-macos-aarch64" / "ffedit"
+EFFECTS = ROOT / "effects.js"
 RENDER_LOCK = Lock()
 SESSION = TemporaryDirectory(prefix="ffglitch-pads-")
 UPLOADS = Path(SESSION.name)
@@ -153,6 +154,33 @@ def render(media, history, percent, spans, pan, texture, wave, extra):
     return name
 
 
+def standalone_script(recipe):
+    template = EFFECTS.read_text()
+    placeholder = "const embeddedRecipe = { version: 1, fps: 24, pads: [] };"
+    if template.count(placeholder) != 1:
+        raise RuntimeError("Missing embedded recipe placeholder")
+    encoded = json.dumps(recipe, ensure_ascii=True, indent=2)
+    return template.replace(placeholder, f"const embeddedRecipe = {encoded};", 1)
+
+
+def render_script(media, script):
+    key = hashlib.sha256(script.encode()).hexdigest()[:16]
+    name = f"js-{key}.mp4"
+    target = media / name
+    with RENDER_LOCK:
+        if not target.exists():
+            with TemporaryDirectory(dir=media) as directory:
+                tmp = Path(directory)
+                entry = tmp / "recipe.js"
+                entry.write_text(script)
+                run(str(ENGINE), "-i", str(media / "work.avi"), "-s", str(entry),
+                    "-o", str(tmp / "result.avi"))
+                run("ffmpeg", "-v", "error", "-xerror", "-i", str(tmp / "result.avi"),
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "6", str(tmp / name))
+                (tmp / name).replace(target)
+    return name
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args):
         super().__init__(*args, directory=ROOT)
@@ -161,13 +189,13 @@ class Handler(SimpleHTTPRequestHandler):
         if self.headers.get("Host") != "127.0.0.1:8765":
             self.send_error(403)
             return
-        match = re.fullmatch(r"/clips/([a-f0-9]{32})/(1|echo-\d+-\d+-[a-f0-9]{16})\.mp4", self.path)
+        match = re.fullmatch(r"/clips/([a-f0-9]{32})/((?:1|js-[a-f0-9]{16})\.mp4|work\.avi)", self.path)
         if match:
             self.directory = UPLOADS
-            self.path = f"/{match[1]}/{match[2]}.mp4"
+            self.path = f"/{match[1]}/{match[2]}"
             super().do_GET()
             return
-        if not re.fullmatch(r"/(?:portrait\.html|portrait/(?:[1-9]|echo-\d+-\d+(?:-[a-f0-9]{16})?)\.(?:mp4|json))", self.path):
+        if not re.fullmatch(r"/(?:portrait\.html|portrait/(?:(?:[1-9]|js-[a-f0-9]{16})\.mp4|work\.avi))", self.path):
             self.send_error(404)
             return
         super().do_GET()
@@ -199,17 +227,20 @@ class Handler(SimpleHTTPRequestHandler):
                 media, prefix = UPLOADS / clip, f"clips/{clip}"
             else:
                 raise ValueError()
-            h, p, spans, pan, texture, wave, extra = parse_recipe(data["recipe"])
+            recipe = data["recipe"]
+            if not isinstance(recipe, dict) or type(recipe.get("fps")) is not int or recipe["fps"] != 24:
+                raise ValueError("Expected a 24 fps recipe")
+            parse_recipe(recipe)
         except (ValueError, KeyError, TypeError):
             self.send_error(400)
             return
         try:
-            active = (p and spans) or (any(pan[:2]) and pan[2]) or (texture[0] < 64 and texture[1]) or (wave[0] and wave[3]) or extra
-            name = render(media, h, p, spans, pan, texture, wave, extra) if active else "1.mp4"
+            script = standalone_script(recipe)
+            name = render_script(media, script)
         except Exception:
             self.send_error(500, "Render failed")
             raise
-        self.send_json({"path": f"{prefix}/{name}"})
+        self.send_json({"path": f"{prefix}/{name}", "script": script, "input": f"{prefix}/work.avi"})
 
     def open_video(self):
         try:
@@ -245,9 +276,6 @@ class Handler(SimpleHTTPRequestHandler):
                     "-show_entries", "stream=width,height,nb_frames", "-of", "json", work], timeout=10))["streams"][0]
                 if int(info["nb_frames"]) != 96:
                     raise ValueError("Start is outside the video")
-                for output, features in [("source.json", ["-f", "mv"]),
-                                         ("texture-source.json", ["-f", "mv", "-f", "q_dct"])]:
-                    run(str(ENGINE), "-i", work, *features, "-e", str(folder / output))
                 run("ffmpeg", "-v", "error", "-i", work, "-c:v", "libx264", "-pix_fmt",
                     "yuv420p", "-g", "6", str(folder / "1.mp4"))
             except (ValueError, IndexError, KeyError, subprocess.SubprocessError):
