@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "sourceBase": "https://github.com/ramiropolla/ffglitch-scripts/blob/main/",
+  "testBank": ["echo", "pan", "wave-bursts", "crumble"],
+  "presets": [
+    {
+      "id": "echo", "label": "Эхо движения", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/mv_average_0.10.js",
+      "xy": ["history", "blend"],
+      "params": {
+        "history": {"label": "История", "kind": "int", "min": 1, "max": 24, "default": 10, "unit": "кадров"},
+        "blend": {"label": "Примесь", "kind": "number", "min": 0, "max": 100, "default": 100, "unit": "%", "adapted": true}
+      }
+    },
+    {
+      "id": "pan", "label": "Снос", "stage": "ffedit", "feature": "mv",
+      "source": "tutorial/scripts/mpeg4/mv_pan.js",
+      "xy": ["x", "y"],
+      "params": {
+        "x": {"label": "Горизонталь", "kind": "int", "min": -16, "max": 16, "default": 1},
+        "y": {"label": "Вертикаль", "kind": "int", "min": -16, "max": 16, "default": 0}
+      }
+    },
+    {
+      "id": "wave-bursts", "label": "Волновые вспышки", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/dd-glitch-assist-scriptsv10/random_damage/dd_RandomDamage(wave).js",
+      "xy": ["chance", "duration"],
+      "params": {
+        "chance": {"label": "Шанс запуска", "kind": "number", "min": 0, "max": 100, "default": 5, "unit": "%"},
+        "duration": {"label": "Длина вспышки", "kind": "int", "min": 1, "max": 24, "default": 5, "unit": "кадров"},
+        "seed": {"label": "Вариант случайности", "kind": "seed", "default": 1, "adapted": true}
+      }
+    },
+    {
+      "id": "swap", "label": "Поменять оси", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/dd-glitch-assist-scriptsv10/instant_damage/dd_swap.js",
+      "xy": [],
+      "params": {}
+    },
+    {
+      "id": "sink", "label": "Тяга вниз / вверх", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/mv_sink.js",
+      "xy": [],
+      "params": {
+        "offset": {"label": "Вертикальная тяга", "kind": "int", "min": -16, "max": 16, "default": 5}
+      }
+    },
+    {
+      "id": "crumble", "label": "Крошка", "stage": "ffedit", "feature": "q_dct", "codec": "mpeg2video",
+      "source": "https://ffglitch.org/docs/0.10.2/features/mpeg2/",
+      "implementation": "render_grid.py",
+      "xy": [],
+      "params": {
+        "cutoff": {"label": "Оставить коэффициентов", "kind": "int", "min": 1, "max": 64, "default": 12}
+      }
+    },
+    {
+      "id": "pixel-sort", "label": "Сортировка пикселей", "stage": "ffgac-filter",
+      "source": "free-for-all/vf_script/pixelsort_gbrp.js",
+      "xy": [],
+      "params": {
+        "threshold": {"label": "Диапазон светлоты", "kind": "range", "min": 0, "max": 100, "default": [25, 80], "unit": "%"},
+        "direction": {"label": "Направление полос", "kind": "enum", "options": ["horizontal", "vertical"], "default": "horizontal"},
+        "reverse": {"label": "Обратная сортировка", "kind": "bool", "default": false}
+      }
+    }
+  ]
+}

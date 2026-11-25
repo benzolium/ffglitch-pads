@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFglitch · Вертикальный луп</title>
+<style>
+*{box-sizing:border-box}body{margin:1.25rem auto;padding:0 1rem;max-width:63rem;background:#e8e7e4;color:#222;font:1rem system-ui}
+h1{font-size:1.35rem}main{display:grid;grid-template-columns:minmax(0,2fr) minmax(14rem,1fr);gap:1rem}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}figure{margin:0}figcaption{margin:.25rem 0}
+video,#results{width:100%;aspect-ratio:9/16;display:block;background:#202321;border-radius:.35rem}
+#results{position:relative}#results video{position:absolute;inset:0;visibility:hidden}#results video.active{visibility:visible}
+aside{background:#d8dad5;padding:.8rem;border-radius:.5rem;align-self:start}
+.xy{display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem}button{font:inherit;cursor:pointer}
+.xy button{aspect-ratio:1;background:#f8f8f4;border:1px solid #66776c;border-radius:.3rem;color:#29352d}
+.xy button[aria-pressed=true]{background:#275344;color:white}.axis{font-size:.85rem}
+.timeline{position:relative;height:.8rem;background:#c5c9c1;border-radius:.25rem}
+.timeline .effect{position:absolute;left:25%;width:50%;height:100%;background:#428574}.timeline i{position:absolute;height:100%;border-left:2px solid #161b18}
+.transport{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.55rem 0}
+@media(max-width:39rem){main{grid-template-columns:1fr}}
+body{color-scheme:dark;background:#191d26;color:#e9edf4}
+header,aside,.edit{background:#252d3a;padding:.75rem;border-radius:.5rem}
+header{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.6rem}
+header h1{margin:0;font-size:1rem}.pair{max-width:29rem;margin:auto}.transport{justify-content:center}
+.axis{color:#b9c6d8}.xy{position:relative;gap:0;padding:.4rem;aspect-ratio:1.65;background:repeating-linear-gradient(90deg,transparent 0 24.5%,#536078 24.5% 25%),repeating-linear-gradient(0deg,#354257 0 24.5%,#536078 24.5% 25%);border-radius:.4rem}
+.xy button{aspect-ratio:auto;display:grid;place-items:center;background:transparent;border:0}
+.xy button[aria-pressed=true]{background:transparent}
+.xy button::after{content:'';width:.38rem;height:.38rem;background:#a4b4c9;border-radius:50%}
+.xy button[aria-pressed=true]::after{width:.8rem;height:.8rem;background:#73dcc5;border:2px solid white;box-shadow:0 0 0 4px #73dcc544}
+.xy button:focus-visible{outline:2px solid white}.pads{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.4rem;margin:.65rem 0}
+.pads span{background:#343e50;border:1px solid #556279;border-radius:.3rem;padding:.45rem;overflow-wrap:anywhere}.pads span:first-child{border-color:#73dcc5;color:#a1f0df}.pads small{display:block;color:#b9c6d8}
+.timeline{background:#394457}.timeline i{border-color:#fff}.edit .lane{display:grid;grid-template-columns:5.5rem 1fr;gap:.4rem;align-items:center;margin:.4rem 0}.edit p{margin:.45rem 0 0}.source{display:inline-block;margin-top:.6rem}a{color:#a9e5d7}
+.xy{display:block;touch-action:none;cursor:crosshair;margin:.75rem 0}
+#dot{position:absolute;width:1rem;height:1rem;border-radius:50%;border:2px solid white;background:#73dcc5;transform:translate(-50%,-50%);pointer-events:none}
+.numbers{display:grid;gap:.4rem;margin:.6rem 0}.numbers label{display:flex;align-items:center;justify-content:space-between;gap:.45rem}.numbers input{width:5rem}
+.edit .timeline{height:2.2rem;touch-action:none}.timeline i{pointer-events:none;z-index:2}
+.clip{position:absolute;top:.2rem;height:1.8rem;display:flex;align-items:stretch;overflow:hidden;background:#428574;border-radius:.25rem;color:white;touch-action:none}
+.clip.selected{outline:2px solid #b5f4e4;z-index:1}.clip button{border:0;background:transparent;color:inherit;padding:0;touch-action:none}
+.clip .middle{flex:1;min-width:0;overflow:hidden;cursor:grab}.clip .edge{flex:0 0 .45rem;background:#0004;cursor:ew-resize}
+.edit-actions{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0}
+.edit-actions input{width:5.5rem}
+#snap-guide{position:absolute;top:0;bottom:0;border-left:2px dashed #ffe09b;pointer-events:none;z-index:3}
+#pan-lane .clip{background:#7162a0}.pads button{background:#343e50;border:1px solid #556279;border-radius:.3rem;padding:.45rem}.pads button[aria-pressed=true]{border-color:#73dcc5;color:#a1f0df}
+#texture-lane .clip{background:#9c536f}#texture-control input{width:100%}
+#wave-lane .clip{background:#8b6632}
+#recipe{height:2.8em;line-height:1.4;margin:.7rem 0;overflow:auto}
+#controls{display:grid;min-width:0}#controls>div{grid-area:1/1;min-width:0}
+#controls>div[hidden],#wave-control[hidden]{display:block;visibility:hidden}
+#pad-name{display:block;line-height:1.25;min-height:2.5em}
+.axis{line-height:1.25;min-height:2.5em}
+.numbers label{line-height:1.25;min-height:2.5em}.numbers input{flex:0 0 5rem}
+.transport button{min-width:5em}.transport output{min-width:5.5ch;font-variant-numeric:tabular-nums}
+.edit .lane>button{padding:.25rem;text-align:left;border:1px solid transparent;background:transparent}
+.edit .lane>button[aria-pressed=true]{border-color:#73dcc5;border-radius:.3rem;color:#a1f0df}
+.timeline[data-active=true]{box-shadow:0 0 0 1px #73dcc5}
+</style>
+<header><h1>FFGLITCH · Настройка пэдов</h1><span>9:16 · Луп 4 с</span></header>
+<main>
+  <section>
+    <div class="pair">
+      <figure><video id="original" muted playsinline preload="auto"></video><figcaption>Оригинал</figcaption></figure>
+      <figure><div id="results"></div><figcaption>Результат</figcaption></figure>
+    </div>
+    <div class="transport"><button id="play" type="button">Играть</button><output id="time">0,00 с</output><small>← / → перемотка · пробел пауза</small></div>
+  </section>
+  <aside>
+    <b id="pad-name">1 · Эхо движения</b>
+    <div id="controls">
+    <div id="xy-control">
+    <p class="axis" id="axis-y">↑ Примесь Эха · 0–100%</p>
+    <div class="xy" id="grid" aria-hidden="true"><span id="dot"></span></div>
+    <p class="axis" id="axis-x">→ История Эха · 1–24 кадра</p>
+    <div class="numbers">
+      <label><span id="label-x">История, кадров</span> <input id="history" type="number" min="1" max="24" value="16"></label>
+      <label><span id="label-y">Примесь, %</span> <input id="percent" type="number" min="0" max="100" value="100"></label>
+    </div>
+    <p><small>Тяни точку. Новый рендер начинается, когда отпускаешь.</small></p>
+    <div id="wave-control" hidden>
+      <label for="wave-seed">Рисунок случайности</label>
+      <input id="wave-seed" type="number" min="0" max="999999" value="42">
+      <button type="button" id="next-seed">Другой рисунок</button>
+    </div>
+    </div>
+    <div id="texture-control" hidden>
+      <p><label for="texture-strength">Убрать детали: <output id="texture-value">62</output> из 63</label></p>
+      <input id="texture-strength" type="range" min="0" max="63" value="62">
+      <small>Вправо — меньше мелких деталей яркости. Цвет напрямую не меняем.</small>
+    </div>
+    </div>
+    <p id="recipe" role="status"></p>
+    <a id="save" download="glitch-recipe.json">Сохранить рецепт</a>
+  </aside>
+</main>
+<div class="pads" aria-label="Пэды">
+  <button id="echo-pad" aria-pressed="true">1 · Эхо</button><button id="pan-pad" aria-pressed="false">2 · Снос</button>
+  <button id="wave-pad" aria-pressed="false">3 · Вспышки</button><button id="texture-pad" aria-pressed="false">4 · Крошка</button>
+</div>
+<section class="edit" aria-label="Монтаж">
+  <b>Где эффект включён</b>
+  <div class="lane"><button type="button">1 · Эхо</button><div class="timeline" id="lane" aria-label="Отрезки применения Эха"><i id="head"></i></div></div>
+  <div class="lane"><button type="button">2 · Снос</button><div class="timeline" id="pan-lane" aria-label="Отрезки применения Сноса"><i id="pan-head"></i></div></div>
+  <div class="lane"><button type="button">3 · Вспышки</button><div class="timeline" id="wave-lane" aria-label="Отрезки применения Вспышек"><i id="wave-head"></i></div></div>
+  <div class="lane"><button type="button">4 · Крошка</button><div class="timeline" id="texture-lane" aria-label="Отрезки применения Крошки"><i id="texture-head"></i></div></div>
+  <div class="edit-actions"><button id="add" type="button" aria-keyshortcuts="A">＋ Отрезок · A</button><button id="remove" type="button" aria-keyshortcuts="D">Удалить · D</button>
+    <label>Начало, мс <input id="start-ms" type="number" step="1"></label>
+    <label>Конец, мс <input id="end-ms" type="number" step="1"></label>
+  </div>
+  <p><small>Двойной клик по пустой дорожке добавляет отрезок на месте. Тяни середину для переноса, края — для обрезки.</small></p>
+</section>
+<small class="source"><a href="https://www.pexels.com/video/people-walking-on-the-street-8996518/">Исходный клип на Pexels</a></small>
+<script>
+const byId = id => document.getElementById(id);
+const master = byId('original');
+const grid = byId('grid');
+const historyInput = byId('history'), percentInput = byId('percent');
+let active, request = 0, lastTime = 0, pointer = null, saved = null;
+let pausedTime = 0;
+const currentTime = () => master.paused ? pausedTime : master.currentTime;
+const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
+const lengthMs = 4000;
+const tracks = [[[1000,3000]],[[2000,3500]],[[500,1600]],[[2400,3900]]];
+const knobs = [[16,100],[12,0],null,[22,6]];
+let pad=0, lane=lanes[0], spans=tracks[0];
+let selected = 0, drag = null;
+function makeClip(url) {
+  const video = document.createElement('video');
+  video.muted = video.playsInline = true;
+  video.loop = true;
+  video.preload = 'auto';
+  video.src = url;
+  byId('results').append(video);
+  return video;
+}
+function sync(force=false) {
+  if (!active || !active.readyState) return;
+  const now = currentTime();
+  const delta = Math.abs(active.currentTime - now);
+  const duration = master.duration;
+  const drift = Number.isFinite(duration) ? Math.min(delta, Math.abs(duration - delta)) : delta;
+  if (force || (!active.seeking && drift > .085)) active.currentTime = now;
+}
+const play = video => video.play().catch(() => {});
+async function show(url, token) {
+  const next = makeClip(url);
+  if (!next.readyState && !next.error) await new Promise(resolve => {
+    next.addEventListener('loadedmetadata', resolve, {once:true});
+    next.addEventListener('error', resolve, {once:true});
+  });
+  if (token !== request) { next.remove(); return false; }
+  if (next.error) { next.remove(); throw Error('Видео не загрузилось'); }
+  if (active) {
+    active?.pause();
+    if (active.src.startsWith('blob:')) URL.revokeObjectURL(active.src);
+    active.remove();
+  }
+  active = next;
+  sync(true);
+  active.classList.add('active');
+  if (!master.paused) play(active);
+  return true;
+}
+const clamp = (v, low, high) => Math.max(low, Math.min(high,v));
+function setPoint(h, p) {
+  historyInput.value = h;
+  percentInput.value = p;
+  byId('dot').style.left = `${pad===3 ? h : pad===1 ? (16-h)/32*100 : (h-1)/23*100}%`;
+  byId('dot').style.top = `${pad===3 ? (24-p)/23*100 : pad===1 ? (16-p)/32*100 : 100-p}%`;
+}
+function saveRecipe(h, p, ranges, pan, texture, wave) {
+  if (saved) URL.revokeObjectURL(saved);
+  saved = URL.createObjectURL(new Blob([JSON.stringify({
+    fps:24, echo:{history_frames:h, blend:p/100, active_ranges_ms:ranges},
+    pan:{x:pan[0],y:pan[1],active_ranges_ms:pan[2]},
+    crumble:{cutoff:texture[0],active_ranges_ms:texture[1]},
+    wave:{chance_percent:wave[0],duration_frames:wave[1],seed:wave[2],active_ranges_ms:wave[3]}
+  }, null, 2)], {type:'application/json'}));
+  byId('save').href = saved;
+  byId('recipe').textContent = 'Превью обновлено.';
+}
+async function mediaUrl(path) {
+  if (location.protocol === 'file:') return path;
+  const media = await fetch(path);
+  if (!media.ok) throw Error();
+  return URL.createObjectURL(await media.blob());
+}
+async function render() {
+  if(pad!==2) {
+    knobs[pad] = [historyInput,percentInput].map(input=>clamp(Math.round(+input.value),+input.min,+input.max));
+    setPoint(...knobs[pad]);
+  }
+  const [h,p]=knobs[0], ranges=tracks[0].map(span=>[...span]);
+  const pan=[...knobs[1],tracks[1].map(span=>[...span])];
+  const texture=[64-Number(byId('texture-strength').value),tracks[2].map(span=>[...span])];
+  const seed=byId('wave-seed');
+  seed.value=clamp(Math.round(+seed.value),0,999999);
+  const wave=[...knobs[3],+seed.value,tracks[3].map(span=>[...span])];
+  const token = ++request;
+  byId('recipe').textContent = 'Пересчёт… Пока играет прошлое превью.';
+  if (location.protocol === 'file:') {
+    byId('recipe').textContent = 'Для пересчёта открой локальный сервер, не файл.';
+    return;
+  }
+  let url;
+  try {
+    const response = await fetch('/render', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({history:h,percent:p,spans:ranges,pan,texture,wave})
+    });
+    if (!response.ok) throw Error();
+    const {path} = await response.json();
+    if (token !== request) return;
+    url = await mediaUrl(path);
+    if (await show(url, token)) {url = null; saveRecipe(h,p,ranges,pan,texture,wave);}
+  } catch {
+    if (token === request) byId('recipe').textContent = 'Не удалось обновить превью. Играет прошлый результат.';
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+function move(e) {
+  const r = grid.getBoundingClientRect();
+  const x=clamp((e.clientX-r.left)/r.width,0,1), y=clamp((e.clientY-r.top)/r.height,0,1);
+  setPoint(pad===3 ? Math.round(x*100) : pad===1 ? Math.round(16-x*32) : 1+Math.round(x*23),
+    pad===3 ? 24-Math.round(y*23) : pad===1 ? Math.round(16-y*32) : Math.round(100-y*100));
+}
+grid.onpointerdown = e => { if (pointer !== null) return; pointer=e.pointerId; grid.setPointerCapture(pointer); move(e); };
+grid.onpointermove = e => { if (e.pointerId===pointer) move(e); };
+grid.onpointerup = e => { if (e.pointerId===pointer) { move(e); pointer=null; render(); } };
+grid.onpointercancel = () => { pointer=null; };
+historyInput.onchange = percentInput.onchange = render;
+function drawSpans() {
+  lanes.forEach((row,track)=>{
+  row.querySelectorAll('.clip').forEach(clip => clip.remove());
+  tracks[track].forEach(([a,b],i) => {
+    const clip = document.createElement('div');
+    clip.className = `clip${i===selected?' selected':''}`;
+    clip.style.left = `${a/lengthMs*100}%`;
+    clip.style.width = `${(b-a)/lengthMs*100}%`;
+    for (const [mode,label,text] of [['left','Начало',''],['move','Перенести','Эхо'],['right','Конец','']]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = mode==='move' ? 'middle' : 'edge';
+      button.setAttribute('aria-label',`${label}: отрезок ${i+1}`);
+      button.textContent = mode==='move' ? ['Эхо','Снос','Крошка','Вспышки'][track] : '';
+      button.onclick = () => {choosePad(track,i); drawSpans();};
+      button.onpointerdown = e => {
+        if (drag || e.button!==0) return;
+        e.preventDefault();
+        choosePad(track,i);
+        row.setPointerCapture(e.pointerId);
+        drag = {id:e.pointerId, x:e.clientX, i, mode, a, b, playhead:Math.round(currentTime()*1000)};
+        const guide=document.createElement('i');
+        guide.id='snap-guide';
+        guide.style.left=`${drag.playhead/lengthMs*100}%`;
+        row.append(guide);
+        selected=i; updateSelection();
+      };
+      clip.append(button);
+    }
+    row.append(clip);
+  });
+  });
+  updateSelection();
+}
+function updateSelection() {
+  lanes.forEach((row,j)=>{
+    row.dataset.active=j===pad;
+    row.previousElementSibling.setAttribute('aria-pressed',j===pad);
+  });
+  lanes.forEach((row,j)=>[...row.querySelectorAll('.clip')].forEach((clip,i)=>clip.classList.toggle('selected',j===pad&&i===selected)));
+  const span=spans[selected];
+  const start=byId('start-ms'), end=byId('end-ms');
+  start.disabled=end.disabled=!span;
+  if(span) {
+    const [low,high]=bounds(selected,...span);
+    start.min=low; start.max=span[1]-1; start.value=span[0];
+    end.min=span[0]+1; end.max=high; end.value=span[1];
+  } else start.value=end.value='';
+  byId('remove').disabled=!span;
+  byId('add').disabled=spans.length>=8 || freeGaps().length===0;
+}
+function bounds(i,a,b) {
+  let low=0, high=lengthMs;
+  spans.forEach(([start,end],j)=>{
+    if(j===i) return;
+    if(end<=a) low=Math.max(low,end);
+    if(start>=b) high=Math.min(high,start);
+  });
+  return [low,high];
+}
+function freeGaps() {
+  let cursor=0;
+  const gaps=[];
+  for(const [a,b] of [...spans].sort((s,t)=>s[0]-t[0])) {
+    if(a>cursor) gaps.push([cursor,a]);
+    cursor=b;
+  }
+  if(cursor<lengthMs) gaps.push([cursor,lengthMs]);
+  return gaps;
+}
+function dragSpan(e) {
+  if (!drag || e.pointerId!==drag.id) return;
+  const {i,mode,a,b,x}=drag;
+  const width=lane.clientWidth;
+  const delta=Math.round((e.clientX-x)*lengthMs/width);
+  const edges=[0,lengthMs,...spans.flatMap((s,j)=>j===i?[]:s),...tracks.filter((_,j)=>j!==pad).flat(2),drag.playhead];
+  const threshold=9*lengthMs/width;
+  const [low,high]=bounds(i,a,b);
+  const offsets=mode==='move'?[a,b]:[mode==='left'?a:b];
+  const min=mode==='right'?a+1-b:low-a;
+  const max=mode==='left'?b-1-a:high-b;
+  let d=clamp(delta,min,max), best=threshold;
+  for (const base of offsets) for (const edge of edges) {
+    const candidate=edge-base, distance=Math.abs(candidate-delta);
+    if(candidate>=min && candidate<=max && distance<=best) {d=candidate;best=distance;}
+  }
+  spans[i]=[a+(mode==='right'?0:d), b+(mode==='left'?0:d)];
+  drawSpans();
+}
+for(const row of lanes) {
+row.previousElementSibling.onclick=()=>choosePad(lanes.indexOf(row),-1);
+// A captured clip gesture can dispatch its final click on the lane.
+// Only a gesture that starts on empty space should clear clip selection.
+row.onpointerdown=e=>{if(e.target===row && e.button===0) choosePad(lanes.indexOf(row),-1);};
+row.ondblclick=e=>{
+  if(e.target!==row || drag || pointer!==null) return;
+  const rect=row.getBoundingClientRect();
+  const at=clamp(Math.round((e.clientX-rect.left)/rect.width*lengthMs),0,lengthMs-1);
+  choosePad(lanes.indexOf(row),-1);
+  addSpan(at);
+};
+row.onpointermove=dragSpan;
+row.onpointerup=e=>{
+  if(!drag || e.pointerId!==drag.id) return;
+  const old=drag;
+  if(e.clientX!==old.x) dragSpan(e);
+  drag=null;
+  byId('snap-guide')?.remove();
+  if(spans[old.i][0]!==old.a || spans[old.i][1]!==old.b) render();
+};
+row.onpointercancel=()=>{if(drag){spans[drag.i]=[drag.a,drag.b];drag=null;byId('snap-guide')?.remove();drawSpans();}};
+}
+function choosePad(track,index=0){
+  if(drag || pointer!==null) return;
+  pad=track; lane=lanes[pad]; spans=tracks[pad]; selected=index;
+  ['echo-pad','pan-pad','texture-pad','wave-pad'].forEach((id,i)=>byId(id).setAttribute('aria-pressed',i===pad));
+  byId('xy-control').hidden=pad===2;
+  byId('texture-control').hidden=pad!==2;
+  byId('wave-control').hidden=pad!==3;
+  if(pad===2) {
+    byId('pad-name').textContent='4 · Крошка';
+    updateSelection();
+    return;
+  }
+  if(pad===3) {
+    byId('pad-name').textContent='3 · Волновые вспышки';
+    byId('axis-x').textContent='→ Шанс запуска · 0–100%';
+    byId('axis-y').textContent='↑ Длительность · 1–24 кадра';
+    byId('label-x').textContent='Шанс, %';
+    byId('label-y').textContent='Длительность, кадров';
+    historyInput.min=0; historyInput.max=100;
+    percentInput.min=1; percentInput.max=24;
+    setPoint(...knobs[pad]); updateSelection();
+    return;
+  }
+  byId('pad-name').textContent=pad?'2 · Снос':'1 · Эхо движения';
+  byId('axis-x').textContent=pad?'← Снос влево · вправо →':'→ История Эха · 1–24 кадра';
+  byId('axis-y').textContent=pad?'↑ Вертикаль · −16…+16':'↑ Примесь Эха · 0–100%';
+  byId('label-x').textContent=pad?'Горизонталь':'История, кадров';
+  byId('label-y').textContent=pad?'Вертикаль':'Примесь, %';
+  historyInput.min=pad?-16:1; historyInput.max=pad?16:24;
+  percentInput.min=pad?-16:0; percentInput.max=pad?16:100;
+  setPoint(...knobs[pad]); updateSelection();
+}
+byId('echo-pad').onclick=()=>choosePad(0);
+byId('pan-pad').onclick=()=>choosePad(1);
+byId('texture-pad').onclick=()=>choosePad(2);
+byId('wave-pad').onclick=()=>choosePad(3);
+byId('wave-seed').onchange=render;
+byId('next-seed').onclick=()=>{
+  const seed=byId('wave-seed');
+  const current=+seed.value;
+  const number=new Uint32Array(1);
+  do {crypto.getRandomValues(number);} while (number[0]>=4294000000 || number[0]%1000000===current);
+  seed.value=number[0]%1000000;
+  render();
+};
+byId('texture-strength').oninput=e=>{byId('texture-value').textContent=e.target.value;};
+byId('texture-strength').onchange=render;
+function addSpan(at){
+  if(drag || pointer!==null) return;
+  const gaps=freeGaps().filter(([a,b])=>at>=a && at<b);
+  if(!gaps.length || spans.length>=8) return;
+  const [,high]=gaps[0];
+  const a=at, size=Math.min(500,high-a);
+  if(size<Math.ceil(1000/24)) return;
+  spans.push([a,a+size]); selected=spans.length-1; drawSpans(); render();
+}
+byId('add').onclick=()=>{
+  addSpan(Math.round(currentTime()*1000));
+};
+for(const [id,index] of [['start-ms',0],['end-ms',1]]) {
+  byId(id).onchange=e=>{
+    const span=spans[selected], input=e.target;
+    if(!span) return;
+    if(input.value==='') {updateSelection();return;}
+    span[index]=clamp(Math.round(Number(input.value)),+input.min,+input.max);
+    drawSpans(); render();
+  };
+}
+byId('remove').onclick=()=>{
+  if(drag || pointer!==null || !spans[selected]) return;
+  spans.splice(selected,1); selected=Math.min(selected,spans.length-1); drawSpans(); render();
+};
+drawSpans();
+master.loop = true;
+master.addEventListener('play', () => { sync(true); if(active) play(active); byId('play').textContent='Пауза'; });
+master.addEventListener('pause', () => {
+  pausedTime = master.currentTime;
+  active?.pause(); paintTime(currentTime()); byId('play').textContent='Играть';
+});
+master.addEventListener('seeked', () => sync(true));
+function paintTime(now) {
+  byId('time').textContent = `${now.toFixed(2).replace('.',',')} с`;
+  byId('head').style.left = `${now / 4 * 100}%`;
+  byId('pan-head').style.left = byId('head').style.left;
+  byId('texture-head').style.left = byId('head').style.left;
+  byId('wave-head').style.left = byId('head').style.left;
+}
+master.addEventListener('timeupdate', () => {
+  const now = currentTime();
+  if (now + 2 < lastTime) {
+    sync(true);
+    if (active?.paused && !master.paused) play(active);
+  } else {
+    sync();
+  }
+  lastTime = now;
+  paintTime(now);
+});
+byId('play').onclick = () => master.paused ? play(master) : master.pause();
+document.addEventListener('keydown', event => {
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  if (event.target instanceof HTMLInputElement && event.target.type==='number') return;
+  if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+    event.preventDefault();
+    if (master.readyState) {
+      const frame = Math.round(currentTime() * 24);
+      const next = clamp(frame + (event.code === 'ArrowLeft' ? -1 : 1), 0, 95);
+      if (next !== frame) {
+        if (master.paused) pausedTime = next / 24;
+        master.currentTime = next / 24;
+        paintTime(next / 24);
+      }
+    }
+  } else if (event.code === 'Space') {
+    event.preventDefault();
+    if (!event.repeat) byId('play').click();
+  } else if(event.code==='KeyA' || event.code==='KeyD') {
+    event.preventDefault();
+    if(!event.repeat) byId(event.code==='KeyA'?'add':'remove').click();
+  } else if(/^[1-4]$/.test(event.key)) choosePad([0,1,3,2][+event.key-1]);
+});
+setPoint(16,100);
+Promise.all([mediaUrl('portrait/1.mp4').then(url => {master.src = url;}),
+  mediaUrl('portrait/9.mp4').then(async url => {
+    if(await show(url, 0)) render();
+    else if(url.startsWith('blob:')) URL.revokeObjectURL(url);
+  })])
+  .catch(() => {byId('recipe').textContent = 'Не удалось загрузить стартовое превью';});
+</script>
+</html>
