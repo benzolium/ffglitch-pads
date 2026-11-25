@@ -6,7 +6,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from check_ffedit_parity import decoded, encoded_packets, guarded_crumble, legacy
+from check_ffedit_parity import decoded, encoded_packets, guarded_crumble, legacy, prepare_fixture
 
 
 def pad(slot, effect, params, start, end):
@@ -29,8 +29,7 @@ def main():
     ]
     with TemporaryDirectory() as directory:
         folder = Path(directory)
-        for name in ("work.avi", "source.json", "texture-source.json"):
-            (folder / name).symlink_to(legacy.MEDIA / name)
+        prepare_fixture(folder)
 
         def render_js(name, recipe, standalone=False):
             encoded = json.dumps(recipe)

@@ -53,43 +53,23 @@ impl Tools {
 
 pub struct Library {
     root: TempDir,
-    demo: Option<PathBuf>,
     tools: Tools,
     render_lock: Mutex<()>,
 }
 
 impl Library {
-    pub fn new(demo: Option<PathBuf>, tools: Tools) -> io::Result<Self> {
+    pub fn new(tools: Tools) -> io::Result<Self> {
         let root = tempfile::Builder::new()
             .prefix("ffglitch-pads-")
             .tempdir()?;
-        let demo = demo
-            .map(|source| -> io::Result<PathBuf> {
-                let folder = root.path().join("demo");
-                std::fs::create_dir(&folder)?;
-                for file in ["work.avi", "1.mp4"] {
-                    std::fs::copy(source.join(file), folder.join(file)).map_err(|error| {
-                        io::Error::new(
-                            error.kind(),
-                            format!("Cannot copy demo {}: {error}", source.join(file).display()),
-                        )
-                    })?;
-                }
-                Ok(folder)
-            })
-            .transpose()?;
         Ok(Self {
             root,
-            demo,
             tools,
             render_lock: Mutex::new(()),
         })
     }
 
     pub fn folder(&self, clip: &str) -> Option<PathBuf> {
-        if clip == "demo" {
-            return self.demo.clone();
-        }
         let suffix = clip.strip_prefix("clip-")?;
         if suffix.len() != 6 || !suffix.bytes().all(|b| b.is_ascii_alphanumeric()) {
             return None;
@@ -105,7 +85,11 @@ impl Library {
             .tempdir_in(self.root.path())
     }
 
-    pub async fn prepare(&self, folder: TempDir, start: u64) -> io::Result<(String, &'static str)> {
+    pub async fn prepare(
+        &self,
+        folder: TempDir,
+        start: u64,
+    ) -> io::Result<(String, &'static str, u32)> {
         let destination = folder.path();
         let source = destination.join("input");
         let work = destination.join("work.avi");
@@ -113,7 +97,7 @@ impl Library {
         run(tool(&self.tools.ffmpeg).args(["-nostdin", "-v", "error", "-ss", &start,
             "-protocol_whitelist", "file", "-format_whitelist", "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mpeg,mpegts",
             "-i"]).arg(&source).args(["-map", "0:v:0", "-an", "-vf",
-            "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=24,tpad=stop_mode=clone:stop_duration=4",
+            "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=24",
             "-frames:v", "96", "-c:v", "mpeg2video", "-bf", "0", "-g", "48", "-q:v", "3"])
             .arg(&work), 60).await?;
         let bytes = run(
@@ -134,15 +118,19 @@ impl Library {
         .await?;
         let info: serde_json::Value = serde_json::from_slice(&bytes)?;
         let stream = &info["streams"][0];
-        if stream["nb_frames"].as_str() != Some("96") {
-            return Err(io::Error::other("Expected 96 frames"));
-        }
+        let frames = stream["nb_frames"]
+            .as_str()
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|n| (1..=96).contains(n))
+            .ok_or_else(|| io::Error::other("No usable video frames"))?;
+        let duration_ms = (frames * 1000 + 12) / 24;
         let orientation = if stream["width"].as_u64() >= stream["height"].as_u64() {
             "landscape"
         } else {
             "portrait"
         };
         self.mp4(&work, &destination.join("1.mp4")).await?;
+        fs::write(destination.join("duration-ms"), duration_ms.to_string()).await?;
         fs::remove_file(source).await?;
         let id = destination
             .file_name()
@@ -150,7 +138,16 @@ impl Library {
             .ok_or_else(|| io::Error::other("Invalid clip directory"))?
             .to_owned();
         let _ = folder.keep();
-        Ok((id, orientation))
+        Ok((id, orientation, duration_ms))
+    }
+
+    pub async fn duration(&self, clip: &str) -> Option<u32> {
+        let folder = self.folder(clip)?;
+        fs::read_to_string(folder.join("duration-ms"))
+            .await
+            .ok()?
+            .parse()
+            .ok()
     }
 
     pub async fn render(&self, clip: &str, script: &str) -> io::Result<String> {

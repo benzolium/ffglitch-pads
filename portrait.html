@@ -115,7 +115,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
     <button id="open-video" type="button">Открыть видео…</button>
     <input id="video-file" type="file" accept="video/*,.mkv" hidden>
   </div>
-  <small class="source" id="clip-label"><a href="https://www.pexels.com/video/people-walking-on-the-street-8996518/">Демо 9:16</a> · Луп 4 с</small>
+  <small class="source" id="clip-label">Луп 4 с</small>
 </header>
 <main>
   <section class="monitor" data-format="portrait">
@@ -159,7 +159,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
       </label>
     </div>
     </div>
-    <p id="recipe" role="status"></p>
+    <p id="recipe" role="status">Открой видео, чтобы начать.</p>
     <div class="exports">
       <button id="export-video" type="button" disabled>Скачать MP4</button>
       <button id="export-js" type="button" disabled>Скачать JS</button>
@@ -185,7 +185,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
 </section>
 <script>
 const byId = id => document.getElementById(id);
-let clipId = null, opening = false, sourceName = 'Pexels 8996518', sourceStart = 2000;
+let clipId = null, opening = false, sourceName = '', sourceStart = 0;
 const master = byId('original');
 const grid = byId('grid');
 const historyInput = byId('history'), percentInput = byId('percent');
@@ -195,8 +195,8 @@ let exportInput = '';
 let pausedTime = 0;
 const currentTime = () => master.paused ? pausedTime : master.currentTime;
 const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
-const lengthMs = 4000;
-const tracks = [[[1000,3000]],[[2000,3500]],[[500,1600]],[[2400,3900]],[],[],[]];
+let lengthMs = 4000;
+const tracks = Array.from({length:7},()=>[]);
 const knobs = [[16,100],[12,0],null,[22,6]];
 const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна'];
 const slots=[0,1,3,2];
@@ -233,7 +233,7 @@ libraryPicker.onchange=()=>{
   loadEffect.textContent=loadEffect.disabled ? 'Загрузить' : previous ? `Обменять ${slotOf(pad)} ↔ ${previous}` : `Загрузить в ${slotOf(pad)}`;
 };
 let pad=0, lane=lanes[0], spans=tracks[0];
-let selected = 0, drag = null;
+let selected = -1, drag = null;
 function makeClip(url) {
   const video = document.createElement('video');
   video.muted = video.playsInline = true;
@@ -421,14 +421,27 @@ byId('video-file').onchange=async event=>{
       'Content-Type':'application/octet-stream','X-Start-Ms':String(start)
     },body:file});
     if(!response.ok) throw Error();
-    const {clip,path,orientation}=await response.json();
+    const {clip,path,orientation,duration_ms}=await response.json();
     originalUrl=await mediaUrl(path);
     if(!await showSource(originalUrl,token)) return;
     originalUrl=null;
     // Both players share this URL until the first processed preview replaces the result.
+    const firstClip=clipId===null;
     clipId=clip; sourceName=file.name; sourceStart=start;
+    lengthMs=duration_ms;
+    for(const track of tracks) {
+      const kept=track.filter(([a])=>a<lengthMs).map(([a,b])=>[a,Math.min(b,lengthMs)]);
+      track.splice(0,track.length,...kept);
+    }
+    if(firstClip && tracks.every(track=>track.length===0)) {
+      const start=Math.floor(lengthMs/4);
+      tracks[slots[0]].push([start,Math.min(lengthMs,start+1000)]);
+    }
+    selected=-1;
+    drawSpans();
+    paintTime(0);
     document.querySelector('.monitor').dataset.format=orientation;
-    byId('clip-label').textContent=`${orientation==='portrait'?'Вертикальное':'Горизонтальное'} видео · Луп 4 с`;
+    byId('clip-label').textContent=`${orientation==='portrait'?'Вертикальное':'Горизонтальное'} видео · Луп ${lengthMs/1000} с`;
   } catch {
     setExportsDisabled(exportWasDisabled || active?.src===master.src);
     byId('recipe').textContent='Не удалось открыть видео. Проверь формат и начало лупа.';
@@ -682,7 +695,7 @@ master.addEventListener('pause', () => {
 master.addEventListener('seeked', () => sync(true));
 function paintTime(now) {
   byId('time').textContent = `${now.toFixed(2).replace('.',',')} с`;
-  lanes.forEach(track=>{track.firstElementChild.style.left=`${now / 4 * 100}%`;});
+  lanes.forEach(track=>{track.firstElementChild.style.left=`${clamp(now*1000/lengthMs,0,1)*100}%`;});
 }
 master.addEventListener('timeupdate', () => {
   const now = currentTime();
@@ -704,7 +717,7 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     if (master.readyState) {
       const frame = Math.round(currentTime() * 24);
-      const next = clamp(frame + (event.code === 'ArrowLeft' ? -1 : 1), 0, 95);
+      const next = clamp(frame + (event.code === 'ArrowLeft' ? -1 : 1), 0, Math.round(lengthMs*24/1000)-1);
       if (next !== frame) {
         if (master.paused) pausedTime = next / 24;
         master.currentTime = next / 24;
@@ -720,20 +733,5 @@ document.addEventListener('keydown', event => {
   } else if(/^[1-4]$/.test(event.key)) choosePad(slots[+event.key-1]);
 });
 setPoint(16,100);
-async function loadDemo() {
-  let url;
-  try {
-    url=await mediaUrl('portrait/1.mp4');
-    if(await showSource(url,0)) {url=null;render();}
-  } catch {
-    if(request===0) {
-      byId('clip-label').textContent = 'Луп 4 с';
-      byId('recipe').textContent = 'Открой видео, чтобы начать.';
-    }
-  } finally {
-    if(url?.startsWith('blob:')) URL.revokeObjectURL(url);
-  }
-}
-void loadDemo();
 </script>
 </html>

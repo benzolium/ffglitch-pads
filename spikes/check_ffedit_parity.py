@@ -10,6 +10,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import serve_xy as legacy
 
 
+def prepare_fixture(folder):
+    work = folder / "work.avi"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=24",
+        "-frames:v", "96", "-c:v", "mpeg2video", "-bf", "0", "-g", "48",
+        "-q:v", "3", str(work),
+    ], check=True, capture_output=True)
+    for name, features in [
+        ("source.json", ["-f", "mv"]),
+        ("texture-source.json", ["-f", "mv", "-f", "q_dct"]),
+    ]:
+        subprocess.run([str(legacy.ENGINE), "-i", str(work), *features,
+                        "-e", str(folder / name)], check=True, capture_output=True)
+
+
 def guarded_crumble(frame, cutoff):
     planes = frame.get("q_dct", {}).get("data", [])
     if planes:
@@ -42,13 +57,14 @@ def main():
     script = Path(__file__).with_name("ffedit-recipe.js").read_text()
     with TemporaryDirectory() as directory:
         root = Path(directory)
+        prepare_fixture(root)
         for config, cutoff, guard in [
             ("motion", 64, False), ("original mix", 2, False), ("guarded mix", 2, True),
         ]:
             folder = root / config
             folder.mkdir()
             for name in ("work.avi", "source.json", "texture-source.json"):
-                (folder / name).symlink_to(legacy.MEDIA / name)
+                (folder / name).symlink_to(root / name)
             js = script.replace("cutoff: 2", f"cutoff: {cutoff}")
             if not guard:
                 js = js.replace(" || !block.slice(0, recipe.crumble.cutoff).some(Boolean)", "")

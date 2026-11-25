@@ -12,7 +12,7 @@ use axum::{
 use media::{Library, Tools};
 use serde::Deserialize;
 use serde_json::json;
-use std::{env, future::poll_fn, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
+use std::{env, future::poll_fn, pin::Pin, sync::Arc, time::Duration};
 use tokio::{fs, io::AsyncWriteExt, net::TcpListener, process::Command, time::timeout};
 
 const PAGE: &str = include_str!("../portrait.html");
@@ -44,24 +44,12 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Result<Html<&'stati
     Ok(Html(PAGE))
 }
 
-async fn demo(
-    State(app): State<App>,
-    Path(file): Path<String>,
-    headers: HeaderMap,
-) -> Result<Response, Error> {
-    app.check(&headers, false)?;
-    serve_file(&app.library, "demo", &file).await
-}
-
 async fn clip(
     State(app): State<App>,
     Path((clip, file)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, Error> {
     app.check(&headers, false)?;
-    if clip == "demo" {
-        return Err((StatusCode::NOT_FOUND, "Clip not found"));
-    }
     serve_file(&app.library, &clip, &file).await
 }
 
@@ -89,7 +77,7 @@ async fn serve_file(library: &Library, clip: &str, file: &str) -> Result<Respons
 
 #[derive(Deserialize)]
 struct RenderRequest {
-    clip: Option<String>,
+    clip: String,
     recipe: recipe::Recipe,
 }
 
@@ -108,24 +96,22 @@ async fn render(State(app): State<App>, req: Request) -> Result<Json<serde_json:
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid recipe size"))?;
     let mut input: RenderRequest =
         serde_json::from_slice(&body).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid recipe"))?;
+    let id = &input.clip;
+    let duration = app
+        .library
+        .duration(id)
+        .await
+        .ok_or((StatusCode::BAD_REQUEST, "Unknown clip"))?;
     input
         .recipe
-        .validate()
+        .validate(duration)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    let id = input.clip.as_deref().unwrap_or("demo");
-    if input.clip.is_some() && id == "demo" || app.library.folder(id).is_none() {
-        return Err((StatusCode::BAD_REQUEST, "Unknown clip"));
-    }
     let script = input.recipe.script();
     let name = app.library.render(id, &script).await.map_err(|error| {
         eprintln!("Render failed: {error}");
         (StatusCode::INTERNAL_SERVER_ERROR, "Render failed")
     })?;
-    let prefix = if id == "demo" {
-        "portrait".into()
-    } else {
-        format!("clips/{id}")
-    };
+    let prefix = format!("clips/{id}");
     Ok(Json(
         json!({"path": format!("{prefix}/{name}"), "script": script, "input": format!("{prefix}/work.avi")}),
     ))
@@ -188,16 +174,16 @@ async fn open_video(
     if received != size {
         return Err((StatusCode::BAD_REQUEST, "Unexpected file length"));
     }
-    let (clip, orientation) = app
-        .library
-        .prepare(directory, start)
-        .await
-        .map_err(|error| {
-            eprintln!("Video preparation failed: {error}");
-            (StatusCode::UNPROCESSABLE_ENTITY, "Could not prepare video")
-        })?;
+    let (clip, orientation, duration_ms) =
+        app.library
+            .prepare(directory, start)
+            .await
+            .map_err(|error| {
+                eprintln!("Video preparation failed: {error}");
+                (StatusCode::UNPROCESSABLE_ENTITY, "Could not prepare video")
+            })?;
     Ok(Json(
-        json!({"clip":clip,"path":format!("clips/{clip}/1.mp4"),"orientation":orientation}),
+        json!({"clip":clip,"path":format!("clips/{clip}/1.mp4"),"orientation":orientation,"duration_ms":duration_ms}),
     ))
 }
 
@@ -217,9 +203,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err(format!("Unknown argument: {arg}").into()),
         }
     }
-    let demo_path = env::var_os("FFGLITCH_PADS_DEMO").map(PathBuf::from);
     let tools = Tools::discover().await?;
-    let app_library = Arc::new(Library::new(demo_path, tools)?);
+    let app_library = Arc::new(Library::new(tools)?);
     let listener = TcpListener::bind(("127.0.0.1", port)).await?;
     let host = listener.local_addr()?.to_string();
     let origin = format!("http://{host}");
@@ -232,7 +217,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = Router::new()
         .route("/", get(page))
         .route("/portrait.html", get(page))
-        .route("/portrait/{file}", get(demo))
         .route("/clips/{clip}/{file}", get(clip))
         .route("/render", post(render))
         .route("/open-video", post(open_video))

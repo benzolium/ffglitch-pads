@@ -13,7 +13,6 @@ from threading import Lock
 from render_grid import crumble, run
 
 ROOT = Path(__file__).resolve().parent
-MEDIA = ROOT / "portrait"
 ENGINE = ROOT / "ffglitch-0.10.2-macos-aarch64" / "ffedit"
 EFFECTS = ROOT / "effects.js"
 RENDER_LOCK = Lock()
@@ -195,7 +194,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.path = f"/{match[1]}/{match[2]}"
             super().do_GET()
             return
-        if not re.fullmatch(r"/(?:portrait\.html|portrait/(?:(?:[1-9]|js-[a-f0-9]{16})\.mp4|work\.avi))", self.path):
+        if self.path != "/portrait.html":
             self.send_error(404)
             return
         super().do_GET()
@@ -221,16 +220,19 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError()
             clip = data.get("clip")
-            if clip is None:
-                media, prefix = MEDIA, "portrait"
-            elif isinstance(clip, str) and re.fullmatch(r"[a-f0-9]{32}", clip) and (UPLOADS / clip / "1.mp4").is_file():
+            if isinstance(clip, str) and re.fullmatch(r"[a-f0-9]{32}", clip) and (UPLOADS / clip / "1.mp4").is_file():
                 media, prefix = UPLOADS / clip, f"clips/{clip}"
             else:
                 raise ValueError()
             recipe = data["recipe"]
             if not isinstance(recipe, dict) or type(recipe.get("fps")) is not int or recipe["fps"] != 24:
                 raise ValueError("Expected a 24 fps recipe")
-            parse_recipe(recipe)
+            parsed = parse_recipe(recipe)
+            duration_ms = int((media / "duration-ms").read_text())
+            _, _, echo, pan, texture, wave, extra = parsed
+            tracks = [echo, pan[-1], texture[-1], wave[-1], *(v[-1] for v in extra.values())]
+            if any(end > duration_ms for track in tracks for _, end in track):
+                raise ValueError("Range ends after video")
         except (ValueError, KeyError, TypeError):
             self.send_error(400)
             return
@@ -269,19 +271,22 @@ class Handler(SimpleHTTPRequestHandler):
                 subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-ss", str(start / 1000),
                     "-protocol_whitelist", "file", "-format_whitelist", "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mpeg,mpegts",
                     "-i", str(source), "-map", "0:v:0", "-an",
-                    "-vf", "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=24,tpad=stop_mode=clone:stop_duration=4",
+                    "-vf", "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=24",
                     "-frames:v", "96", "-c:v", "mpeg2video", "-bf", "0", "-g", "48", "-q:v", "3", work],
                     check=True, timeout=60)
                 info = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0",
                     "-show_entries", "stream=width,height,nb_frames", "-of", "json", work], timeout=10))["streams"][0]
-                if int(info["nb_frames"]) != 96:
+                frames = int(info["nb_frames"])
+                if not 1 <= frames <= 96:
                     raise ValueError("Start is outside the video")
+                duration_ms = (frames * 1000 + 12) // 24
                 run("ffmpeg", "-v", "error", "-i", work, "-c:v", "libx264", "-pix_fmt",
                     "yuv420p", "-g", "6", str(folder / "1.mp4"))
+                (folder / "duration-ms").write_text(str(duration_ms))
             except (ValueError, IndexError, KeyError, subprocess.SubprocessError):
                 self.send_error(422, "Could not prepare video")
                 return
-        self.send_json({"clip": clip, "path": f"clips/{clip}/1.mp4",
+        self.send_json({"clip": clip, "path": f"clips/{clip}/1.mp4", "duration_ms": duration_ms,
                         "orientation": "landscape" if info["width"] >= info["height"] else "portrait"})
 
     def send_json(self, data):

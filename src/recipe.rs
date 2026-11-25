@@ -30,7 +30,7 @@ struct Pad {
 }
 
 impl Recipe {
-    pub fn validate(&mut self) -> Result<(), &'static str> {
+    pub fn validate(&mut self, duration_ms: u32) -> Result<(), &'static str> {
         if self.version != 1 || self.fps != 24 || self.pads.len() > 4 {
             return Err("Unsupported recipe");
         }
@@ -68,7 +68,7 @@ impl Recipe {
                 || pad
                     .active_ranges_ms
                     .iter()
-                    .any(|[a, b]| a >= b || *b > 4000)
+                    .any(|[a, b]| a >= b || *b > duration_ms)
                 || pad.active_ranges_ms.windows(2).any(|p| p[0][1] > p[1][0])
             {
                 return Err("Invalid or overlapping ranges");
@@ -98,11 +98,12 @@ mod tests {
             ]
         }))
         .unwrap();
-        assert!(recipe.validate().is_ok());
+        assert!(recipe.validate(500).is_ok());
+        assert!(recipe.validate(499).is_err());
         assert_eq!(recipe.pads[0].active_ranges_ms, [[100, 300], [300, 500]]);
         assert!(recipe.script().contains("\"effect\": \"circular\""));
         assert!(!recipe.script().contains(PLACEHOLDER));
         recipe.pads[0].active_ranges_ms[1][0] = 299;
-        assert!(recipe.validate().is_err());
+        assert!(recipe.validate(500).is_err());
     }
 }
