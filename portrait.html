@@ -52,13 +52,68 @@ header h1{margin:0;font-size:1rem}.pair{max-width:29rem;margin:auto}.transport{j
 .edit .lane>button{padding:.25rem;text-align:left;border:1px solid transparent;background:transparent}
 .edit .lane>button[aria-pressed=true]{border-color:#73dcc5;border-radius:.3rem;color:#a1f0df}
 .timeline[data-active=true]{box-shadow:0 0 0 1px #73dcc5}
+/* Work surface: keep the transport and all four tracks in view. */
+:root{--surface:#252724;--sunk:#151614;--line:#4c5048;--ink:#eeeee6;--dim:#aeb2a8;--accent:#f4c64f}
+html{background:var(--sunk)}
+body{margin:0 auto;padding:8px 12px;max-width:100rem;background:var(--surface);color:var(--ink);font:13px/1.3 system-ui,sans-serif;display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;gap:7px;height:100dvh}
+header,aside,.edit{border:1px solid var(--line);border-radius:2px;background:var(--surface);padding:6px 9px}
+header{margin:0;min-height:34px;background:var(--sunk)}
+header h1,#pad-name,.transport output,.axis,.track-list>button{font-family:ui-monospace,Menlo,monospace}
+header h1{font-size:13px;letter-spacing:.05em}
+header label{display:flex;align-items:center;gap:6px;color:var(--dim)}
+.open-controls{display:flex;align-items:center;gap:6px;min-width:0}
+.open-controls input{width:5em}.open-controls button{white-space:nowrap}
+button,input,select{font:inherit;background:var(--sunk);border:1px solid var(--line);border-radius:2px;color:var(--ink)}
+button{padding:4px 8px}button:disabled{opacity:.45}a{color:var(--dim)}
+main{min-height:0;min-width:0;grid-template-columns:minmax(0,1fr) minmax(220px,285px);gap:8px}
+.monitor{min-height:0;min-width:0;display:grid;grid-template-rows:minmax(0,1fr) auto;border:1px solid var(--line);background:var(--sunk)}
+.pair{max-width:none;min-height:0;margin:0;padding:5px;gap:5px}
+figure{min-height:0;min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr);background:#101110}
+figcaption{grid-row:1;margin:0;padding:3px 6px;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+video,#results{height:100%;min-height:0;aspect-ratio:auto;border-radius:0;object-fit:contain;background:#101110}
+.monitor[data-format="landscape"] .pair{grid-template-columns:1fr;grid-template-rows:repeat(2,minmax(0,1fr))}
+.monitor[data-format="landscape"] .viewport{container-type:size;display:grid;place-items:center;min-height:0}
+.monitor[data-format="landscape"] .viewport>video,.monitor[data-format="landscape"] .viewport>#results{width:min(100cqw,177.7778cqh);height:auto;aspect-ratio:16/9}
+.monitor[data-format="landscape"] video{object-fit:contain}
+.monitor[data-format="landscape"] #results video{height:100%;width:100%}
+.viewport{min-height:0}
+.monitor[data-format="portrait"] .pair{grid-template-rows:minmax(0,1fr)}
+.transport{margin:0;padding:4px 6px;border-top:1px solid var(--line);justify-content:start;gap:8px}
+aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
+#pad-name{min-height:0;padding-bottom:6px;border-bottom:1px solid var(--line)}
+#controls{margin-top:5px}.axis,.numbers label{min-height:0}
+.axis{color:var(--dim);margin:4px 0;font-size:11px}
+.xy{height:clamp(80px,17dvh,150px);aspect-ratio:auto;margin:3px 0;border-radius:2px;background:repeating-linear-gradient(90deg,transparent 0 24.5%,#4b5148 24.5% 25%),repeating-linear-gradient(0deg,#232620 0 24.5%,#4b5148 24.5% 25%)}
+#dot{background:var(--accent);border-color:#161711}.numbers{margin:5px 0;gap:3px}.numbers input{padding:2px 4px}
+#xy-control p:last-of-type,#texture-control p{margin:5px 0}
+#wave-control input{width:5em}#recipe{height:2.6em;margin:4px 0;color:var(--dim)}
+.pads{margin:0;gap:4px}.pads button{padding:5px 8px;background:var(--sunk);border:1px solid var(--line);border-radius:2px;text-align:left}.pads button[aria-pressed=true]{background:var(--accent);color:#151614;border-color:var(--accent);font-weight:700}
+.edit .lane{margin:2px 0;grid-template-columns:6rem minmax(0,1fr)}
+.edit .timeline{height:24px;border-radius:2px;background:#30342d}.clip{top:2px;height:20px;border-radius:2px}
+.edit .lane>button{padding:2px 4px}.edit .lane>button[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}.timeline[data-active=true]{box-shadow:0 0 0 1px var(--line)}
+.edit-actions{margin:4px 0 0;gap:5px}.edit-actions input{width:5em}
+.edit p{margin:3px 0 0;color:var(--dim)}.source{margin:0;font-size:11px}
+@media(max-width:640px){body{height:auto;min-height:100dvh}header{flex-wrap:wrap}main{grid-template-columns:1fr}.monitor{height:54dvh;min-height:210px}aside{overflow:visible}}
+@media(min-width:641px) and (max-height:650px){
+  .xy{height:65px}#xy-control p.hint{display:none}
+  .edit .timeline{height:21px}.clip{height:17px}
+  #recipe{height:2.2em;line-height:1.1}
+}
+@media(min-width:641px) and (max-height:520px){body{height:auto;min-height:100dvh}main{min-height:270px}}
 </style>
-<header><h1>FFGLITCH · Настройка пэдов</h1><span>9:16 · Луп 4 с</span></header>
+<header><h1>FFGLITCH / PADS</h1>
+  <div class="open-controls">
+    <label>Начало, с <input id="clip-start" type="number" min="0" max="86400" step=".001" value="0"></label>
+    <button id="open-video" type="button">Открыть видео…</button>
+    <input id="video-file" type="file" accept="video/*,.mkv" hidden>
+  </div>
+  <small class="source" id="clip-label"><a href="https://www.pexels.com/video/people-walking-on-the-street-8996518/">Демо 9:16</a> · Луп 4 с</small>
+</header>
 <main>
-  <section>
+  <section class="monitor" data-format="portrait">
     <div class="pair">
-      <figure><video id="original" muted playsinline preload="auto"></video><figcaption>Оригинал</figcaption></figure>
-      <figure><div id="results"></div><figcaption>Результат</figcaption></figure>
+      <figure><div class="viewport"><video id="original" muted playsinline preload="auto"></video></div><figcaption>Оригинал</figcaption></figure>
+      <figure><div class="viewport"><div id="results"></div></div><figcaption>Результат</figcaption></figure>
     </div>
     <div class="transport"><button id="play" type="button">Играть</button><output id="time">0,00 с</output><small>← / → перемотка · пробел пауза</small></div>
   </section>
@@ -73,7 +128,7 @@ header h1{margin:0;font-size:1rem}.pair{max-width:29rem;margin:auto}.transport{j
       <label><span id="label-x">История, кадров</span> <input id="history" type="number" min="1" max="24" value="16"></label>
       <label><span id="label-y">Примесь, %</span> <input id="percent" type="number" min="0" max="100" value="100"></label>
     </div>
-    <p><small>Тяни точку. Новый рендер начинается, когда отпускаешь.</small></p>
+    <p class="hint"><small>Тяни точку. Новый рендер начинается, когда отпускаешь.</small></p>
     <div id="wave-control" hidden>
       <label for="wave-seed">Рисунок случайности</label>
       <input id="wave-seed" type="number" min="0" max="999999" value="42">
@@ -106,9 +161,9 @@ header h1{margin:0;font-size:1rem}.pair{max-width:29rem;margin:auto}.transport{j
   </div>
   <p><small>Двойной клик по пустой дорожке добавляет отрезок на месте. Тяни середину для переноса, края — для обрезки.</small></p>
 </section>
-<small class="source"><a href="https://www.pexels.com/video/people-walking-on-the-street-8996518/">Исходный клип на Pexels</a></small>
 <script>
 const byId = id => document.getElementById(id);
+let clipId = null, opening = false, sourceName = 'Pexels 8996518', sourceStart = 2000;
 const master = byId('original');
 const grid = byId('grid');
 const historyInput = byId('history'), percentInput = byId('percent');
@@ -149,7 +204,7 @@ async function show(url, token) {
   if (next.error) { next.remove(); throw Error('Видео не загрузилось'); }
   if (active) {
     active?.pause();
-    if (active.src.startsWith('blob:')) URL.revokeObjectURL(active.src);
+    if (active.src.startsWith('blob:') && active.src!==master.src) URL.revokeObjectURL(active.src);
     active.remove();
   }
   active = next;
@@ -165,14 +220,9 @@ function setPoint(h, p) {
   byId('dot').style.left = `${pad===3 ? h : pad===1 ? (16-h)/32*100 : (h-1)/23*100}%`;
   byId('dot').style.top = `${pad===3 ? (24-p)/23*100 : pad===1 ? (16-p)/32*100 : 100-p}%`;
 }
-function saveRecipe(h, p, ranges, pan, texture, wave) {
+function saveRecipe(recipe) {
   if (saved) URL.revokeObjectURL(saved);
-  saved = URL.createObjectURL(new Blob([JSON.stringify({
-    fps:24, echo:{history_frames:h, blend:p/100, active_ranges_ms:ranges},
-    pan:{x:pan[0],y:pan[1],active_ranges_ms:pan[2]},
-    crumble:{cutoff:texture[0],active_ranges_ms:texture[1]},
-    wave:{chance_percent:wave[0],duration_frames:wave[1],seed:wave[2],active_ranges_ms:wave[3]}
-  }, null, 2)], {type:'application/json'}));
+  saved = URL.createObjectURL(new Blob([JSON.stringify(recipe, null, 2)], {type:'application/json'}));
   byId('save').href = saved;
   byId('recipe').textContent = 'Превью обновлено.';
 }
@@ -193,6 +243,13 @@ async function render() {
   const seed=byId('wave-seed');
   seed.value=clamp(Math.round(+seed.value),0,999999);
   const wave=[...knobs[3],+seed.value,tracks[3].map(span=>[...span])];
+  const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,pads:[
+    {slot:1,effect:'echo',params:{history_frames:h,blend_percent:p},active_ranges_ms:ranges},
+    {slot:2,effect:'pan',params:{x:pan[0],y:pan[1]},active_ranges_ms:pan[2]},
+    {slot:3,effect:'wave-bursts',params:{chance:wave[0],duration:wave[1],seed:wave[2]},active_ranges_ms:wave[3]},
+    {slot:4,effect:'crumble',params:{cutoff:texture[0]},active_ranges_ms:texture[1]}
+  ]};
+  if (opening) return;
   const token = ++request;
   byId('recipe').textContent = 'Пересчёт… Пока играет прошлое превью.';
   if (location.protocol === 'file:') {
@@ -203,19 +260,61 @@ async function render() {
   try {
     const response = await fetch('/render', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({history:h,percent:p,spans:ranges,pan,texture,wave})
+      body:JSON.stringify({clip:clipId,recipe})
     });
     if (!response.ok) throw Error();
     const {path} = await response.json();
     if (token !== request) return;
     url = await mediaUrl(path);
-    if (await show(url, token)) {url = null; saveRecipe(h,p,ranges,pan,texture,wave);}
+    if (await show(url, token)) {url = null; saveRecipe(recipe);}
   } catch {
     if (token === request) byId('recipe').textContent = 'Не удалось обновить превью. Играет прошлый результат.';
   } finally {
     if (url) URL.revokeObjectURL(url);
   }
 }
+byId('open-video').onclick=()=>byId('video-file').click();
+byId('video-file').onchange=async event=>{
+  const file=event.target.files[0], start=Math.round(Number(byId('clip-start').value)*1000);
+  event.target.value='';
+  if(!file || opening) return;
+  if(file.size>256*1024**2 || !Number.isInteger(start) || start<0 || start>86400000) {
+    byId('recipe').textContent='Проверь начало лупа и размер файла (до 256 МиБ).';
+    return;
+  }
+  opening=true;
+  const token=++request;
+  byId('open-video').disabled=true;
+  byId('recipe').textContent='Готовлю локальный луп…';
+  const wasPlaying=!master.paused;
+  try {
+    const response=await fetch('/open-video',{method:'POST',headers:{
+      'Content-Type':'application/octet-stream','X-Start-Ms':String(start)
+    },body:file});
+    if(!response.ok) throw Error();
+    const {clip,path,orientation}=await response.json();
+    const originalUrl=await mediaUrl(path);
+    const oldUrl=master.src;
+    master.pause();
+    pausedTime=lastTime=0;
+    master.src=originalUrl;
+    if(oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+    paintTime(0);
+    await show(originalUrl,token);
+    // Both players share this URL until the first processed preview replaces the result.
+    clipId=clip; sourceName=file.name; sourceStart=start;
+    document.querySelector('.monitor').dataset.format=orientation;
+    byId('clip-label').textContent=`${orientation==='portrait'?'Вертикальное':'Горизонтальное'} видео · Луп 4 с`;
+    if(wasPlaying) play(master);
+  } catch {
+    byId('recipe').textContent='Не удалось открыть видео. Проверь формат и начало лупа.';
+    return;
+  } finally {
+    opening=false;
+    byId('open-video').disabled=false;
+  }
+  render();
+};
 function move(e) {
   const r = grid.getBoundingClientRect();
   const x=clamp((e.clientX-r.left)/r.width,0,1), y=clamp((e.clientY-r.top)/r.height,0,1);
