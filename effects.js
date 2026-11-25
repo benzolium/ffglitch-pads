@@ -83,7 +83,27 @@ export function glitch_frame(frame) {
   const phase = phaseRange ? Math.floor(
     (i - Math.ceil(phaseRange[0] * fps / 1000)) / effects['split-phase'].params.phase_frames
   ) % 2 : -1;
-  if (!mv || !(echo || shift.some(Boolean) || bursting || swap || circular || phase >= 0 || reverse || zoom || delayed)) return;
+  const mirrorX = Boolean(range('mirror-x'));
+  const mirrorY = Boolean(range('mirror-y'));
+  const rotate = Boolean(range('rotate-field'));
+  const speed = range('motion-speed') ? effects['motion-speed'].params.factor : 1;
+  const rising = Boolean(range('only-rise'));
+  const falling = Boolean(range('only-fall'));
+  const stretchX = range('stretch-x') ? effects['stretch-x'].params.amount : null;
+  const stretchY = range('stretch-y') ? effects['stretch-y'].params.amount : null;
+  const fastest = range('boost-fastest') ? effects['boost-fastest'].params : null;
+  if (!mv || !(echo || shift.some(Boolean) || bursting || swap || circular || phase >= 0 || reverse || zoom || delayed ||
+      mirrorX || mirrorY || rotate || speed !== 1 || rising || falling || stretchX !== null || stretchY !== null || fastest)) return;
+
+  const magnitude = ([x, y]) => x*x + y*y;
+  let fastestThreshold = Infinity;
+  if (fastest) {
+    let largest = 0;
+    for (const row of original) for (const vector of row) {
+      if (vector) largest = Math.max(largest, magnitude(vector));
+    }
+    fastestThreshold = largest * fastest.threshold_percent / 100;
+  }
 
   frame.mv.overflow = 'truncate';
   const echoHistory = echo ? history.slice(-echoParams.history_frames) : [];
@@ -93,6 +113,11 @@ export function glitch_frame(frame) {
       if (clean == null) continue;
       const values = echoHistory.flatMap(old => old?.[y][x] == null ? [] : [old[y][x]]);
       const delayedVector = delayed?.[y]?.[x];
+      const oppositeX = mv.width - 1 - x, oppositeY = mv.height - 1 - y;
+      const mirroredX = mirrorX ? original[y][oppositeX] : null;
+      const mirroredY = mirrorY ? original[oppositeY][x] : null;
+      const rotated = rotate ? original[oppositeY][oppositeX] : null;
+      const boost = fastest && magnitude(clean) > fastestThreshold ? fastest.factor : 1;
       for (let axis = 0; axis < 2; axis++) {
         const v = clean[axis];
         const avg = values.length ? values.reduce((sum, n) => sum + n[axis], 0) / values.length : v;
@@ -108,9 +133,17 @@ export function glitch_frame(frame) {
         if (reverse) delta -= 2 * v;
         if (zoom) delta += ((axis === 0 ? (mv.width - 1) / 2 - x : (mv.height - 1) / 2 - y) / 100) * zoom;
         if (delayedVector) delta += delayedVector[axis] - v;
-        const weight = echo + Number(shift[axis] !== 0) + Number(bursting) +
+        let weight = echo + Number(shift[axis] !== 0) + Number(bursting) +
           Number(swap) + Number(circular) + Number(phase === axis) +
           Number(reverse) + Number(zoom !== 0) + Number(Boolean(delayedVector));
+        if (mirroredX) { delta += (axis === 0 ? -mirroredX[axis] : mirroredX[axis]) - v; weight++; }
+        if (mirroredY) { delta += (axis === 1 ? -mirroredY[axis] : mirroredY[axis]) - v; weight++; }
+        if (rotated) { delta += rotated[axis] - v; weight++; }
+        if (speed !== 1) { delta += v * (speed - 1); weight++; }
+        if (boost !== 1) { delta += v * (boost - 1); weight++; }
+        if (axis === 1 && ((rising && v < 0) || (falling && v > 0))) { delta -= v; weight++; }
+        if (stretchX !== null) { delta += axis === 0 ? Math.sign((mv.width-1)/2-x)*stretchX : -v; weight++; }
+        if (stretchY !== null) { delta += axis === 1 ? Math.sign((mv.height-1)/2-y)*stretchY : -v; weight++; }
         mv[y][x][axis] = roundEven(v + delta / Math.max(1, weight));
       }
     }

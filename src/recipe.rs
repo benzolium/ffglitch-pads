@@ -52,7 +52,11 @@ impl Recipe {
                 "split-phase" => &[("phase_frames", 1, 24)],
                 "zoom" => &[("amount", -100, 100)],
                 "delay" => &[("delay_frames", 1, 48)],
-                "swap" | "circular" | "reverse" => &[],
+                "motion-speed" => &[("factor", -8, 8)],
+                "stretch-x" | "stretch-y" => &[("amount", -32, 32)],
+                "boost-fastest" => &[("threshold_percent", 0, 100), ("factor", 1, 8)],
+                "swap" | "circular" | "reverse" | "mirror-x" | "mirror-y" | "rotate-field"
+                | "only-rise" | "only-fall" => &[],
                 _ => return Err("Unknown effect"),
             };
             if pad.params.len() != limits.len()

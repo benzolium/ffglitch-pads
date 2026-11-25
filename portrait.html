@@ -163,6 +163,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
       <label id="delay-control" hidden>Задержка: <output id="delay-value">12</output> кадр.
         <input id="delay-frames" type="range" min="1" max="48" value="12">
       </label>
+      <div id="additional-parameters"></div>
     </div>
     </div>
     <p id="recipe" role="status">Открой видео, чтобы начать.</p>
@@ -203,11 +204,50 @@ const currentTime = () => master.paused ? pausedTime : master.currentTime;
 const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
 let lengthMs = 4000;
 const knobs = [[16,100],[12,0],null,[22,6]];
-const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна','Зум движения','Задержка движения','Инверсия движения'];
+const additions=[
+  {id:'mirror-x',title:'Зеркало движения',description:'Переносит движение на противоположную сторону по выбранной оси.',
+    modes:[['mirror-x','Горизонталь'],['mirror-y','Вертикаль']]},
+  {id:'rotate-field',title:'Поворот поля',description:'Поворачивает расположение векторов на 180°, не меняя их направления.'},
+  {id:'motion-speed',title:'Множитель движения',description:'1 — без изменений, 0 — стоп, отрицательные значения разворачивают движение.',controls:[['factor','Множитель',-8,8,2]]},
+  {id:'only-rise',title:'Фильтр вертикали',description:'Оставляет подъём или падение, не трогая горизонталь.',
+    modes:[['only-rise','Подъём'],['only-fall','Падение']]},
+  {id:'stretch-x',title:'Растяжение',description:'Задаёт встречный сдвиг по выбранной оси и гасит другую.',
+    modes:[['stretch-x','Горизонталь'],['stretch-y','Вертикаль']],controls:[['amount','Сдвиг',-32,32,12]]},
+  {id:'boost-fastest',title:'Усиление быстрого движения',description:'Усиливает блоки выше порога относительно самого быстрого блока кадра.',controls:[
+    ['threshold_percent','Порог, %',0,100,35],['factor','Усиление',1,8,4]
+  ]},
+];
+const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна','Зум движения','Задержка движения',...additions.map(p=>p.title)];
 const slots=[0,1,3,2];
 const slotOf=effect=>slots.indexOf(effect)+1;
 const padButtons=['echo-pad','pan-pad','texture-pad','wave-pad'].map(byId);
-const effectIds=['echo','pan','crumble','wave-bursts','swap','split-phase','circular','zoom','delay','reverse'];
+const effectIds=['echo','pan','crumble','wave-bursts','swap','split-phase','circular','zoom','delay',...additions.map(p=>p.id)];
+const additionalValues=additions.map(p=>Object.fromEntries((p.controls??[]).map(([key,,,,value])=>[key,value])));
+const additionalModes=additions.map(p=>p.id);
+const firstAdditional=9;
+function drawAdditionalParameters() {
+  const container=byId('additional-parameters');
+  container.replaceChildren();
+  const index=pad-firstAdditional;
+  if(additions[index]?.modes) {
+    const label=document.createElement('label'), select=document.createElement('select');
+    for(const [value,title] of additions[index].modes) select.add(new Option(title,value));
+    select.value=additionalModes[index];
+    select.onchange=()=>{additionalModes[index]=select.value;render();};
+    label.append('Режим: ',select);
+    container.append(label);
+  }
+  for(const [key,title,min,max] of additions[index]?.controls??[]) {
+    const label=document.createElement('label');
+    const slider=document.createElement('input'), output=document.createElement('output');
+    slider.type='range'; slider.min=min; slider.max=max; slider.value=additionalValues[index][key];
+    output.textContent=slider.value;
+    label.append(`${title}: `,output,slider);
+    slider.oninput=()=>{output.textContent=slider.value;};
+    slider.onchange=()=>{additionalValues[index][key]=Number(slider.value);render();};
+    container.append(label);
+  }
+}
 const tracks = effectIds.map(()=>[]);
 for (let i=4;i<effectIds.length;i++) {
   const button=document.createElement('button');
@@ -360,9 +400,9 @@ function render() {
   const parameters=[{history_frames:h,blend_percent:p},{x:pan[0],y:pan[1]},
     {cutoff:texture[0]},{chance:wave[0],duration:wave[1],seed:wave[2]},
     {},{phase_frames:Number(byId('phase-frames').value)},{},
-    {amount:Number(byId('zoom-amount').value)},{delay_frames:Number(byId('delay-frames').value)},{}];
+    {amount:Number(byId('zoom-amount').value)},{delay_frames:Number(byId('delay-frames').value)},...additionalValues.map(value=>({...value}))];
   const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,
-    pads:slots.map((effect,index)=>({slot:index+1,effect:effectIds[effect],
+    pads:slots.map((effect,index)=>({slot:index+1,effect:additionalModes[effect-firstAdditional]??effectIds[effect],
       params:parameters[effect],active_ranges_ms:tracks[effect].map(span=>[...span])}))};
   if (opening || !master.getAttribute('src')) return;
   const token = ++request;
@@ -596,15 +636,15 @@ function choosePad(track,index=0){
   byId('phase-control').hidden=pad!==5;
   byId('zoom-control').hidden=pad!==7;
   byId('delay-control').hidden=pad!==8;
+  drawAdditionalParameters();
   if(pad>=4) {
     byId('extra-description').textContent=[
       'Меняет местами горизонталь и вертикаль движения.',
       'По очереди гасит горизонтальное и вертикальное движение.',
       'Искажает векторы по-разному в разных частях кадра.',
       'Стягивает или раздвигает движение относительно центра.',
-      'Подставляет исходное движение из более раннего кадра.',
-      'Разворачивает векторы движения, не меняя порядок кадров.'
-    ][pad-4];
+      'Подставляет исходное движение из более раннего кадра.'
+    ][pad-4] ?? additions[pad-firstAdditional]?.description ?? '';
     updateSelection();
     return;
   }

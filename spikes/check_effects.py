@@ -74,6 +74,10 @@ def main():
         outputs = []
         for effect, params in [
             ("zoom", {"amount": 40}), ("delay", {"delay_frames": 12}), ("reverse", {}),
+            ("mirror-x", {}), ("mirror-y", {}), ("rotate-field", {}),
+            ("motion-speed", {"factor": 2}), ("only-rise", {}), ("only-fall", {}),
+            ("stretch-x", {"amount": 12}), ("stretch-y", {"amount": 12}),
+            ("boost-fastest", {"threshold_percent": 35, "factor": 4}),
         ]:
             recipe = dict(version=1, fps=24, pads=[pad(1, effect, params, 1000, 3000)])
             actual = render_js(effect, recipe, standalone=True)
@@ -81,6 +85,11 @@ def main():
             assert actual not in outputs
             outputs.append(actual)
             print(f"{effect}: distinct edited packets, standalone output decodes without errors")
+
+        reversed_by_multiplier = render_js("negative-speed", dict(version=1, fps=24, pads=[
+            pad(1, "motion-speed", {"factor": -1}, 1000, 3000)
+        ]))
+        assert reversed_by_multiplier == outputs[2]
 
 
 if __name__ == "__main__":

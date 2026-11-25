@@ -29,6 +29,15 @@ PAD_PARAMS = {
     "zoom": {"amount": (-100, 100)},
     "delay": {"delay_frames": (1, 48)},
     "reverse": {},
+    "mirror-x": {},
+    "mirror-y": {},
+    "rotate-field": {},
+    "motion-speed": {"factor": (-8, 8)},
+    "only-rise": {},
+    "only-fall": {},
+    "stretch-x": {"amount": (-32, 32)},
+    "stretch-y": {"amount": (-32, 32)},
+    "boost-fastest": {"threshold_percent": (0, 100), "factor": (1, 8)},
     "circular": {},
 }
 
@@ -73,8 +82,8 @@ def parse_recipe(recipe):
     h, p, spans = effects.get("echo", [1, 0, []])
     return (h, p, spans, effects.get("pan", [0, 0, []]),
             effects.get("crumble", [64, []]), effects.get("wave-bursts", [0, 5, 1, []]),
-            {name: effects[name] for name in ("swap", "split-phase", "circular", "zoom", "delay", "reverse")
-             if name in effects and effects[name][-1]})
+            {name: values for name, values in effects.items()
+             if name not in ("echo", "pan", "crumble", "wave-bursts") and values[-1]})
 
 
 def render(media, history, percent, spans, pan, texture, wave, extra):
