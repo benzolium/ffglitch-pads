@@ -42,6 +42,10 @@ header h1{margin:0;font-size:1rem}.pair{max-width:29rem;margin:auto}.transport{j
 #pan-lane .clip{background:#7162a0}.pads button{background:#343e50;border:1px solid #556279;border-radius:.3rem;padding:.45rem}.pads button[aria-pressed=true]{border-color:#73dcc5;color:#a1f0df}
 #texture-lane .clip{background:#9c536f}#texture-control input{width:100%}
 #wave-lane .clip{background:#8b6632}
+.lane[hidden]{display:none}#extra-control[hidden]{display:block;visibility:hidden}
+.timeline[data-effect="swap"] .clip{background:#486c8c}
+.timeline[data-effect="split-phase"] .clip{background:#80583f}
+.timeline[data-effect="circular"] .clip{background:#506c43}
 #recipe{height:2.8em;line-height:1.4;margin:.7rem 0;overflow:auto}
 #controls{display:grid;min-width:0}#controls>div{grid-area:1/1;min-width:0}
 #controls>div[hidden],#wave-control[hidden]{display:block;visibility:hidden}
@@ -121,7 +125,7 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
     <div class="transport"><button id="play" type="button">Играть</button><output id="time">0,00 с</output><small>← / → перемотка · пробел пауза</small></div>
   </section>
   <aside>
-    <b id="pad-name">1 · Эхо движения</b>
+    <b id="pad-name">1 · Эхо</b>
     <form id="library">
       <select id="library-effect" aria-label="Эффект из библиотеки"><option value="">Библиотека пэдов…</option></select>
       <button id="load-effect" type="submit" disabled>Обменять</button>
@@ -146,6 +150,12 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
       <p><label for="texture-strength">Убрать детали: <output id="texture-value">62</output> из 63</label></p>
       <input id="texture-strength" type="range" min="0" max="63" value="62">
       <small>Вправо — меньше мелких деталей яркости. Цвет напрямую не меняем.</small>
+    </div>
+    <div id="extra-control" hidden>
+      <p id="extra-description"></p>
+      <label id="phase-control" hidden>Длина фазы: <output id="phase-value">5</output> кадр.
+        <input id="phase-frames" type="range" min="1" max="24" value="5">
+      </label>
     </div>
     </div>
     <p id="recipe" role="status"></p>
@@ -179,19 +189,31 @@ let pausedTime = 0;
 const currentTime = () => master.paused ? pausedTime : master.currentTime;
 const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
 const lengthMs = 4000;
-const tracks = [[[1000,3000]],[[2000,3500]],[[500,1600]],[[2400,3900]]];
+const tracks = [[[1000,3000]],[[2000,3500]],[[500,1600]],[[2400,3900]],[],[],[]];
 const knobs = [[16,100],[12,0],null,[22,6]];
-const padTitles=['Эхо движения','Снос','Крошка','Волновые вспышки'];
+const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна'];
 const slots=[0,1,3,2];
 const slotOf=effect=>slots.indexOf(effect)+1;
 const padButtons=['echo-pad','pan-pad','texture-pad','wave-pad'].map(byId);
-const padNames=['Эхо','Снос','Крошка','Вспышки'];
+const effectIds=['echo','pan','crumble','wave-bursts','swap','split-phase','circular'];
+for (let i=4;i<effectIds.length;i++) {
+  const button=document.createElement('button');
+  button.type='button'; button.hidden=true; button.onclick=()=>choosePad(i);
+  padButtons[0].parentElement.append(button); padButtons.push(button);
+  const row=document.createElement('div'), label=document.createElement('button');
+  const track=document.createElement('div');
+  row.className='lane'; row.hidden=true; label.type='button';
+  track.className='timeline'; track.dataset.effect=effectIds[i]; track.setAttribute('aria-label',padTitles[i]);
+  track.append(document.createElement('i'));
+  row.append(label,track); byId('add').parentElement.before(row); lanes.push(track);
+}
 const libraryPicker=byId('library-effect'), loadEffect=byId('load-effect');
 function syncLibrary() {
   const value=libraryPicker.value;
   libraryPicker.length=1;
-  for (const effect of slots) {
-    const option=new Option(`${padTitles[effect]} · слот ${slotOf(effect)}`,String(effect));
+  for (const [effect,title] of padTitles.entries()) {
+    const slot=slotOf(effect);
+    const option=new Option(`${title}${slot?` · слот ${slot}`:''}`,String(effect));
     option.disabled=effect===pad;
     libraryPicker.append(option);
   }
@@ -200,7 +222,8 @@ function syncLibrary() {
 }
 libraryPicker.onchange=()=>{
   loadEffect.disabled=libraryPicker.value==='' || Number(libraryPicker.value)===pad;
-  loadEffect.textContent=loadEffect.disabled ? 'Обменять' : `Обменять ${slotOf(pad)} ↔ ${slotOf(Number(libraryPicker.value))}`;
+  const previous=slotOf(Number(libraryPicker.value));
+  loadEffect.textContent=loadEffect.disabled ? 'Загрузить' : previous ? `Обменять ${slotOf(pad)} ↔ ${previous}` : `Загрузить в ${slotOf(pad)}`;
 };
 let pad=0, lane=lanes[0], spans=tracks[0];
 let selected = 0, drag = null;
@@ -261,7 +284,7 @@ async function mediaUrl(path) {
   return URL.createObjectURL(await media.blob());
 }
 async function render() {
-  if(pad!==2) {
+  if(pad===0 || pad===1 || pad===3) {
     knobs[pad] = [historyInput,percentInput].map(input=>clamp(Math.round(+input.value),+input.min,+input.max));
     setPoint(...knobs[pad]);
   }
@@ -271,12 +294,12 @@ async function render() {
   const seed=byId('wave-seed');
   seed.value=clamp(Math.round(+seed.value),0,999999);
   const wave=[...knobs[3],+seed.value,tracks[3].map(span=>[...span])];
-  const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,pads:[
-    {slot:slotOf(0),effect:'echo',params:{history_frames:h,blend_percent:p},active_ranges_ms:ranges},
-    {slot:slotOf(1),effect:'pan',params:{x:pan[0],y:pan[1]},active_ranges_ms:pan[2]},
-    {slot:slotOf(3),effect:'wave-bursts',params:{chance:wave[0],duration:wave[1],seed:wave[2]},active_ranges_ms:wave[3]},
-    {slot:slotOf(2),effect:'crumble',params:{cutoff:texture[0]},active_ranges_ms:texture[1]}
-  ].sort((a,b)=>a.slot-b.slot)};
+  const parameters=[{history_frames:h,blend_percent:p},{x:pan[0],y:pan[1]},
+    {cutoff:texture[0]},{chance:wave[0],duration:wave[1],seed:wave[2]},
+    {},{phase_frames:Number(byId('phase-frames').value)},{}];
+  const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,
+    pads:slots.map((effect,index)=>({slot:index+1,effect:effectIds[effect],
+      params:parameters[effect],active_ranges_ms:tracks[effect].map(span=>[...span])}))};
   if (opening) return;
   const token = ++request;
   byId('recipe').textContent = 'Пересчёт… Пока играет прошлое превью.';
@@ -367,7 +390,7 @@ function drawSpans() {
       button.type = 'button';
       button.className = mode==='move' ? 'middle' : 'edge';
       button.setAttribute('aria-label',`${label}: отрезок ${i+1}`);
-      button.textContent = mode==='move' ? ['Эхо','Снос','Крошка','Вспышки'][track] : '';
+      button.textContent = mode==='move' ? padTitles[track] : '';
       button.onclick = () => {choosePad(track,i); drawSpans();};
       button.onpointerdown = e => {
         if (drag || e.button!==0) return;
@@ -429,7 +452,7 @@ function dragSpan(e) {
   const {i,mode,a,b,x}=drag;
   const width=lane.clientWidth;
   const delta=Math.round((e.clientX-x)*lengthMs/width);
-  const edges=[0,lengthMs,...spans.flatMap((s,j)=>j===i?[]:s),...tracks.filter((_,j)=>j!==pad).flat(2),drag.playhead];
+  const edges=[0,lengthMs,...spans.flatMap((s,j)=>j===i?[]:s),...slots.filter(j=>j!==pad).flatMap(j=>tracks[j].flat()),drag.playhead];
   const threshold=9*lengthMs/width;
   const [low,high]=bounds(i,a,b);
   const offsets=mode==='move'?[a,b]:[mode==='left'?a:b];
@@ -471,10 +494,21 @@ function choosePad(track,index=0){
   pad=track; lane=lanes[pad]; spans=tracks[pad]; selected=index;
   syncLibrary();
   byId('pad-name').textContent=`${slotOf(pad)} · ${padTitles[pad]}`;
-  ['echo-pad','pan-pad','texture-pad','wave-pad'].forEach((id,i)=>byId(id).setAttribute('aria-pressed',i===pad));
-  byId('xy-control').hidden=pad===2;
+  padButtons.forEach((button,i)=>button.setAttribute('aria-pressed',i===pad));
+  byId('xy-control').hidden=pad===2 || pad>=4;
   byId('texture-control').hidden=pad!==2;
   byId('wave-control').hidden=pad!==3;
+  byId('extra-control').hidden=pad<4;
+  byId('phase-control').hidden=pad!==5;
+  if(pad>=4) {
+    byId('extra-description').textContent=[
+      'Меняет местами горизонталь и вертикаль движения.',
+      'По очереди гасит горизонтальное и вертикальное движение.',
+      'Искажает векторы по-разному в разных частях кадра.'
+    ][pad-4];
+    updateSelection();
+    return;
+  }
   if(pad===2) {
     updateSelection();
     return;
@@ -501,16 +535,23 @@ byId('echo-pad').onclick=()=>choosePad(0);
 byId('pan-pad').onclick=()=>choosePad(1);
 byId('texture-pad').onclick=()=>choosePad(2);
 byId('wave-pad').onclick=()=>choosePad(3);
+byId('phase-frames').oninput=e=>{byId('phase-value').textContent=e.target.value;};
+byId('phase-frames').onchange=render;
 byId('library').onsubmit=event=>{
   event.preventDefault();
   if(drag || pointer!==null || opening || libraryPicker.value==='') return;
   const effect=Number(libraryPicker.value);
-  if(effect===pad || !slots.includes(effect)) return;
+  if(effect===pad || !effectIds[effect]) return;
   const destination=slots.indexOf(pad), previous=slots.indexOf(effect);
-  [slots[destination],slots[previous]]=[slots[previous],slots[destination]];
+  if(previous<0) slots[destination]=effect;
+  else [slots[destination],slots[previous]]=[slots[previous],slots[destination]];
   const actions=byId('add').parentElement;
+  padButtons.forEach((button,item)=>{
+    button.hidden=!slots.includes(item);
+    lanes[item].parentElement.hidden=button.hidden;
+  });
   slots.forEach((item,index)=>{
-    const label=`${index+1} · ${padNames[item]}`;
+    const label=`${index+1} · ${padTitles[item]}`;
     const button=padButtons[item], row=lanes[item].parentElement;
     button.textContent=label;
     button.parentElement.append(button);
@@ -567,10 +608,7 @@ master.addEventListener('pause', () => {
 master.addEventListener('seeked', () => sync(true));
 function paintTime(now) {
   byId('time').textContent = `${now.toFixed(2).replace('.',',')} с`;
-  byId('head').style.left = `${now / 4 * 100}%`;
-  byId('pan-head').style.left = byId('head').style.left;
-  byId('texture-head').style.left = byId('head').style.left;
-  byId('wave-head').style.left = byId('head').style.left;
+  lanes.forEach(track=>{track.firstElementChild.style.left=`${now / 4 * 100}%`;});
 }
 master.addEventListener('timeupdate', () => {
   const now = currentTime();

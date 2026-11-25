@@ -24,6 +24,9 @@ PAD_PARAMS = {
     "pan": {"x": (-16, 16), "y": (-16, 16)},
     "wave-bursts": {"chance": (0, 100), "duration": (1, 24), "seed": (0, 999999)},
     "crumble": {"cutoff": (1, 64)},
+    "swap": {},
+    "split-phase": {"phase_frames": (1, 24)},
+    "circular": {},
 }
 
 
@@ -66,11 +69,16 @@ def parse_recipe(recipe):
     # Slots address controls, not the order of processing.
     h, p, spans = effects.get("echo", [1, 0, []])
     return (h, p, spans, effects.get("pan", [0, 0, []]),
-            effects.get("crumble", [64, []]), effects.get("wave-bursts", [0, 5, 1, []]))
+            effects.get("crumble", [64, []]), effects.get("wave-bursts", [0, 5, 1, []]),
+            {name: effects[name] for name in ("swap", "split-phase", "circular")
+             if name in effects and effects[name][-1]})
 
 
-def render(media, history, percent, spans, pan, texture, wave):
-    key = hashlib.sha256(json.dumps(["mix-v3", spans, pan, texture, wave]).encode()).hexdigest()[:16]
+def render(media, history, percent, spans, pan, texture, wave, extra):
+    cache = ["mix-v3", spans, pan, texture, wave]
+    if extra:
+        cache.append(extra)
+    key = hashlib.sha256(json.dumps(cache).encode()).hexdigest()[:16]
     name = f"echo-{history}-{percent}-{key}.mp4"
 
     target = media / name
@@ -90,6 +98,15 @@ def render(media, history, percent, spans, pan, texture, wave):
                 for i in range(len(frames)):
                     def applies(ranges):
                         return any(a * 24 <= i * 1000 < b * 24 for a, b in ranges)
+                    swap = "swap" in extra and applies(extra["swap"][-1])
+                    circular = "circular" in extra and applies(extra["circular"][-1])
+                    phase_axis = None
+                    if "split-phase" in extra:
+                        count, ranges = extra["split-phase"]
+                        for a, b in ranges:
+                            if a * 24 <= i * 1000 < b * 24:
+                                phase_axis = ((i - (a * 24 + 999) // 1000) // count) % 2
+                                break
                     if use_texture and applies(texture[1]):
                         crumble(frames[i], texture[0])
                     echo = percent / 100 if applies(spans) else 0
@@ -101,7 +118,7 @@ def render(media, history, percent, spans, pan, texture, wave):
                         remaining = wave[1]
                     bursting = remaining > 0
                     remaining = max(0, remaining - 1)
-                    if not originals[i] or not (echo or any(shift) or bursting):
+                    if not originals[i] or not (echo or any(shift) or bursting or swap or circular or phase_axis is not None):
                         continue
                     frames[i]["mv"]["overflow"] = "truncate"
                     window = [m for m in originals[max(0, i-history+1):i+1] if m]
@@ -109,6 +126,7 @@ def render(media, history, percent, spans, pan, texture, wave):
                         for x, vector in enumerate(row):
                             if vector is None:
                                 continue
+                            clean = tuple(vector)
                             values = [m[y][x] for m in window if m[y][x] is not None]
                             for axis in (0, 1):
                                 avg = sum(v[axis] for v in values) / len(values)
@@ -118,7 +136,14 @@ def render(media, history, percent, spans, pan, texture, wave):
                                     factor = (math.sin(math.tau * y / len(originals[i])) if axis == 0
                                               else math.cos(math.tau * x / len(row)))
                                     delta += vector[axis] * (factor - 1)
-                                vector[axis] = round(vector[axis] + delta / max(1, echo + pan_weight + bursting))
+                                if swap:
+                                    delta += clean[1-axis] - clean[axis]
+                                if circular:
+                                    delta += clean[axis] * ((math.sin(x) if axis == 0 else math.cos(y)) - 1)
+                                if phase_axis == axis:
+                                    delta -= clean[axis]
+                                weight = echo + pan_weight + bursting + swap + circular + (phase_axis == axis)
+                                vector[axis] = round(clean[axis] + delta / max(1, weight))
                 (tmp / "recipe.json").write_text(json.dumps(data, separators=(",", ":")))
                 run(str(ENGINE), "-i", str(media / "work.avi"), *features,
                     "-a", str(tmp / "recipe.json"), "-o", str(tmp / "result.avi"))
@@ -174,13 +199,13 @@ class Handler(SimpleHTTPRequestHandler):
                 media, prefix = UPLOADS / clip, f"clips/{clip}"
             else:
                 raise ValueError()
-            h, p, spans, pan, texture, wave = parse_recipe(data["recipe"])
+            h, p, spans, pan, texture, wave, extra = parse_recipe(data["recipe"])
         except (ValueError, KeyError, TypeError):
             self.send_error(400)
             return
         try:
-            active = (p and spans) or (any(pan[:2]) and pan[2]) or (texture[0] < 64 and texture[1]) or (wave[0] and wave[3])
-            name = render(media, h, p, spans, pan, texture, wave) if active else "1.mp4"
+            active = (p and spans) or (any(pan[:2]) and pan[2]) or (texture[0] < 64 and texture[1]) or (wave[0] and wave[3]) or extra
+            name = render(media, h, p, spans, pan, texture, wave, extra) if active else "1.mp4"
         except Exception:
             self.send_error(500, "Render failed")
             raise
