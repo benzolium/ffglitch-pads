@@ -26,6 +26,9 @@ PAD_PARAMS = {
     "crumble": {"cutoff": (1, 64)},
     "swap": {},
     "split-phase": {"phase_frames": (1, 24)},
+    "zoom": {"amount": (-100, 100)},
+    "delay": {"delay_frames": (1, 48)},
+    "reverse": {},
     "circular": {},
 }
 
@@ -70,7 +73,7 @@ def parse_recipe(recipe):
     h, p, spans = effects.get("echo", [1, 0, []])
     return (h, p, spans, effects.get("pan", [0, 0, []]),
             effects.get("crumble", [64, []]), effects.get("wave-bursts", [0, 5, 1, []]),
-            {name: effects[name] for name in ("swap", "split-phase", "circular")
+            {name: effects[name] for name in ("swap", "split-phase", "circular", "zoom", "delay", "reverse")
              if name in effects and effects[name][-1]})
 
 

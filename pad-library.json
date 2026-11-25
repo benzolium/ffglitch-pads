@@ -55,6 +55,24 @@
       }
     },
     {
+      "id": "zoom", "label": "Зум движения", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/dd-glitch-assist-scriptsv10/instant_damage/dd_zoomIn.js",
+      "xy": [],
+      "params": {"amount": {"label": "Зум", "kind": "int", "min": -100, "max": 100, "default": 40}}
+    },
+    {
+      "id": "delay", "label": "Задержка движения", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/dd-glitch-assist-scriptsv10/instant_damage/dd_delay.js",
+      "xy": [],
+      "params": {"delay_frames": {"label": "Задержка", "kind": "int", "min": 1, "max": 48, "default": 12}}
+    },
+    {
+      "id": "reverse", "label": "Инверсия движения", "stage": "ffedit", "feature": "mv",
+      "source": "free-for-all/dd-glitch-assist-scriptsv10/instant_damage/dd_reverse.js",
+      "xy": [],
+      "params": {}
+    },
+    {
       "id": "pixel-sort", "label": "Сортировка пикселей", "stage": "ffgac-filter",
       "source": "free-for-all/vf_script/pixelsort_gbrp.js",
       "xy": [],

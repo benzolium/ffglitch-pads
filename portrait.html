@@ -157,6 +157,12 @@ aside{align-self:stretch;min-height:0;overflow:auto;background:var(--sunk)}
       <label id="phase-control" hidden>Длина фазы: <output id="phase-value">5</output> кадр.
         <input id="phase-frames" type="range" min="1" max="24" value="5">
       </label>
+      <label id="zoom-control" hidden>Зум: <output id="zoom-value">40</output>
+        <input id="zoom-amount" type="range" min="-100" max="100" value="40">
+      </label>
+      <label id="delay-control" hidden>Задержка: <output id="delay-value">12</output> кадр.
+        <input id="delay-frames" type="range" min="1" max="48" value="12">
+      </label>
     </div>
     </div>
     <p id="recipe" role="status">Открой видео, чтобы начать.</p>
@@ -196,13 +202,13 @@ let pausedTime = 0;
 const currentTime = () => master.paused ? pausedTime : master.currentTime;
 const lanes = [byId('lane'),byId('pan-lane'),byId('texture-lane'),byId('wave-lane')];
 let lengthMs = 4000;
-const tracks = Array.from({length:7},()=>[]);
 const knobs = [[16,100],[12,0],null,[22,6]];
-const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна'];
+const padTitles=['Эхо','Снос','Крошка','Вспышки','Обмен осей','Фазы осей','Пространственная волна','Зум движения','Задержка движения','Инверсия движения'];
 const slots=[0,1,3,2];
 const slotOf=effect=>slots.indexOf(effect)+1;
 const padButtons=['echo-pad','pan-pad','texture-pad','wave-pad'].map(byId);
-const effectIds=['echo','pan','crumble','wave-bursts','swap','split-phase','circular'];
+const effectIds=['echo','pan','crumble','wave-bursts','swap','split-phase','circular','zoom','delay','reverse'];
+const tracks = effectIds.map(()=>[]);
 for (let i=4;i<effectIds.length;i++) {
   const button=document.createElement('button');
   button.type='button'; button.hidden=true; button.onclick=()=>choosePad(i);
@@ -353,7 +359,8 @@ function render() {
   const wave=[...knobs[3],+seed.value,tracks[3].map(span=>[...span])];
   const parameters=[{history_frames:h,blend_percent:p},{x:pan[0],y:pan[1]},
     {cutoff:texture[0]},{chance:wave[0],duration:wave[1],seed:wave[2]},
-    {},{phase_frames:Number(byId('phase-frames').value)},{}];
+    {},{phase_frames:Number(byId('phase-frames').value)},{},
+    {amount:Number(byId('zoom-amount').value)},{delay_frames:Number(byId('delay-frames').value)},{}];
   const recipe={version:1,source:{name:sourceName,start_ms:sourceStart},fps:24,
     pads:slots.map((effect,index)=>({slot:index+1,effect:effectIds[effect],
       params:parameters[effect],active_ranges_ms:tracks[effect].map(span=>[...span])}))};
@@ -587,11 +594,16 @@ function choosePad(track,index=0){
   byId('wave-control').hidden=pad!==3;
   byId('extra-control').hidden=pad<4;
   byId('phase-control').hidden=pad!==5;
+  byId('zoom-control').hidden=pad!==7;
+  byId('delay-control').hidden=pad!==8;
   if(pad>=4) {
     byId('extra-description').textContent=[
       'Меняет местами горизонталь и вертикаль движения.',
       'По очереди гасит горизонтальное и вертикальное движение.',
-      'Искажает векторы по-разному в разных частях кадра.'
+      'Искажает векторы по-разному в разных частях кадра.',
+      'Стягивает или раздвигает движение относительно центра.',
+      'Подставляет исходное движение из более раннего кадра.',
+      'Разворачивает векторы движения, не меняя порядок кадров.'
     ][pad-4];
     updateSelection();
     return;
@@ -624,6 +636,10 @@ byId('texture-pad').onclick=()=>choosePad(2);
 byId('wave-pad').onclick=()=>choosePad(3);
 byId('phase-frames').oninput=e=>{byId('phase-value').textContent=e.target.value;};
 byId('phase-frames').onchange=render;
+for (const [input,output] of [['zoom-amount','zoom-value'],['delay-frames','delay-value']]) {
+  byId(input).oninput=e=>{byId(output).textContent=e.target.value;};
+  byId(input).onchange=render;
+}
 byId('library').onsubmit=event=>{
   event.preventDefault();
   if(drag || pointer!==null || opening || libraryPicker.value==='') return;

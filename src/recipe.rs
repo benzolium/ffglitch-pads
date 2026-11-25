@@ -50,7 +50,9 @@ impl Recipe {
                 "wave-bursts" => &[("chance", 0, 100), ("duration", 1, 24), ("seed", 0, 999999)],
                 "crumble" => &[("cutoff", 1, 64)],
                 "split-phase" => &[("phase_frames", 1, 24)],
-                "swap" | "circular" => &[],
+                "zoom" => &[("amount", -100, 100)],
+                "delay" => &[("delay_frames", 1, 48)],
+                "swap" | "circular" | "reverse" => &[],
                 _ => return Err("Unknown effect"),
             };
             if pad.params.len() != limits.len()

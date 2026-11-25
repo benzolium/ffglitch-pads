@@ -70,6 +70,18 @@ def main():
         assert actual != render_js("wave-43", with_wave(43))
         print("wave: deterministic across launches, seed changes output, embedded recipe matches")
 
+        clean = render_js("clean", dict(version=1, fps=24, pads=[]))
+        outputs = []
+        for effect, params in [
+            ("zoom", {"amount": 40}), ("delay", {"delay_frames": 12}), ("reverse", {}),
+        ]:
+            recipe = dict(version=1, fps=24, pads=[pad(1, effect, params, 1000, 3000)])
+            actual = render_js(effect, recipe, standalone=True)
+            assert actual[:24] == clean[:24] and actual[24:72] != clean[24:72], effect
+            assert actual not in outputs
+            outputs.append(actual)
+            print(f"{effect}: distinct edited packets, standalone output decodes without errors")
+
 
 if __name__ == "__main__":
     main()

@@ -61,31 +61,38 @@ export function glitch_frame(frame) {
 
   const mv = frame.mv?.forward;
   const echoParams = effects.echo?.params;
+  const delayFrames = effects.delay?.params.delay_frames ?? 0;
   const original = mv ? Array.from({ length: mv.height }, (_, y) =>
     Array.from({ length: mv.width }, (_, x) => {
       const v = mv[y][x];
       return v == null ? null : [v[0], v[1]];
     })) : null;
-  if (echoParams) {
+  const historySize = Math.max(echoParams?.history_frames ?? 0, delayFrames ? delayFrames + 1 : 0);
+  if (historySize) {
     history.push(original);
-    if (history.length > echoParams.history_frames) history.shift();
+    if (history.length > historySize) history.shift();
   }
   const echo = range('echo') ? echoParams.blend_percent / 100 : 0;
   const shift = range('pan') ? [effects.pan.params.x, effects.pan.params.y] : [0, 0];
   const swap = Boolean(range('swap'));
   const circular = Boolean(range('circular'));
+  const reverse = Boolean(range('reverse'));
+  const zoom = range('zoom') ? effects.zoom.params.amount : 0;
+  const delayed = range('delay') ? history[history.length - 1 - delayFrames] : null;
   const phaseRange = range('split-phase');
   const phase = phaseRange ? Math.floor(
     (i - Math.ceil(phaseRange[0] * fps / 1000)) / effects['split-phase'].params.phase_frames
   ) % 2 : -1;
-  if (!mv || !(echo || shift.some(Boolean) || bursting || swap || circular || phase >= 0)) return;
+  if (!mv || !(echo || shift.some(Boolean) || bursting || swap || circular || phase >= 0 || reverse || zoom || delayed)) return;
 
   frame.mv.overflow = 'truncate';
+  const echoHistory = echo ? history.slice(-echoParams.history_frames) : [];
   for (let y = 0; y < mv.height; y++) {
     for (let x = 0; x < mv.width; x++) {
       const clean = original[y][x];
       if (clean == null) continue;
-      const values = echo ? history.flatMap(old => old?.[y][x] == null ? [] : [old[y][x]]) : [];
+      const values = echoHistory.flatMap(old => old?.[y][x] == null ? [] : [old[y][x]]);
+      const delayedVector = delayed?.[y]?.[x];
       for (let axis = 0; axis < 2; axis++) {
         const v = clean[axis];
         const avg = values.length ? values.reduce((sum, n) => sum + n[axis], 0) / values.length : v;
@@ -98,8 +105,12 @@ export function glitch_frame(frame) {
         if (swap) delta += clean[1 - axis] - v;
         if (circular) delta += v * ((axis === 0 ? Math.sin(x) : Math.cos(y)) - 1);
         if (phase === axis) delta -= v;
+        if (reverse) delta -= 2 * v;
+        if (zoom) delta += ((axis === 0 ? (mv.width - 1) / 2 - x : (mv.height - 1) / 2 - y) / 100) * zoom;
+        if (delayedVector) delta += delayedVector[axis] - v;
         const weight = echo + Number(shift[axis] !== 0) + Number(bursting) +
-          Number(swap) + Number(circular) + Number(phase === axis);
+          Number(swap) + Number(circular) + Number(phase === axis) +
+          Number(reverse) + Number(zoom !== 0) + Number(Boolean(delayedVector));
         mv[y][x][axis] = roundEven(v + delta / Math.max(1, weight));
       }
     }
