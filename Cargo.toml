@@ -3,6 +3,7 @@ name = "ffglitch-pads"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
+license = "MIT"
 
 [dependencies]
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }

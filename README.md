@@ -66,3 +66,11 @@ python3 render_portrait.py
 параметры и отрезки применения в миллисекундах. Номер слота задаёт
 клавишу, а не порядок обработки. Пока каждый из семи реализованных
 эффектов можно включить в рецепт не больше одного раза.
+
+## Лицензия
+
+Код FFglitch Pads — [MIT](LICENSE-MIT). Реализации эффектов вдохновлены
+примерами из [ffglitch-scripts](https://github.com/ramiropolla/ffglitch-scripts);
+ссылки на примеры есть в `pad-library.json`. FFglitch и FFmpeg — отдельные
+инструменты под собственными лицензиями. Официальная ARM-сборка FFglitch
+0.10.2 распространяется по GPL-2.0-or-later; [исходники этой сборки](https://ffglitch.org/pub/src/ffglitch-0.10.2.tar.xz).
